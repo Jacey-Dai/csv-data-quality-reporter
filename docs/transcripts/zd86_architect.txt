@@ -1,0 +1,4100 @@
+STUDENT_NAME: Zhenmin Dai
+NETID: zd86
+OPTION: 3
+ROLE: architect
+AGENT_TOOL: ChatGPT
+REPOSITORY_B_URL: https://github.com/Jacey-Dai/csv-data-quality-reporter
+
+===== TRANSCRIPT START =====
+
+[STUDENT]
+Act as the Architect for my IDS 706 AI-assisted development project.
+
+I selected Option 3: Create a New Project.
+
+The project will be a CSV Data Quality Reporter written in Python. Its purpose is to load a user-provided CSV file and generate a concise report covering dataset dimensions, column data types, missing values, duplicate rows, numeric summary statistics, and numeric outliers using the IQR method.
+
+The finished project must include:
+
+- a clear command-line interface;
+- organized and readable Python code;
+- meaningful unit and integration tests;
+- typical and edge-case handling;
+- a Dockerfile and .dockerignore;
+- a container that runs a meaningful analysis;
+- accurate setup, usage, testing, and Docker instructions;
+- a manual smoke-test procedure;
+- a docs/plan.md implementation plan.
+
+Please act only as the Architect. Do not implement the project yet.
+
+Develop a detailed but practical implementation plan that identifies:
+
+- functional and non-functional requirements;
+- proposed repository structure;
+- responsibilities of important files and functions;
+- command-line behavior;
+- missing-value, duplicate, and outlier logic;
+- Docker approach;
+- testing and verification strategy;
+- important edge cases;
+- risks or design concerns;
+- implementation order.
+
+Keep the project appropriate for a graduate student learning software engineering. Avoid unnecessary frameworks or an overly complicated architecture. I will review your recommendations and ask follow-up questions before finalizing docs/plan.md.
+
+[AGENT]
+I’d structure this as a small, testable Python CLI project with one clear analysis pipeline rather than introducing classes, plugins, or a web framework. The main design goal should be: **easy to understand, easy to test, and easy to run locally or in Docker**.
+
+# CSV Data Quality Reporter — Implementation Plan
+
+## 1. Project Goal
+
+Build a Python command-line application that accepts a user-provided CSV file and produces a concise data-quality report.
+
+The report should help a user quickly understand:
+
+- dataset dimensions;
+- column data types;
+- missing values;
+- duplicate rows;
+- numeric summary statistics; and
+- numeric outliers detected using the IQR method.
+
+The project should demonstrate good software-engineering practices appropriate for IDS 706, including modular Python code, testing, containerization, documentation, and reproducible execution.
+
+The initial version should remain intentionally small. It should not attempt to become a general-purpose data-profiling framework.
+
+---
+
+# 2. Functional Requirements
+
+## 2.1 CSV Input
+
+The program must:
+
+- accept a CSV file path through the command line;
+- verify that the file exists;
+- attempt to load the CSV using `pandas`;
+- provide a clear error message when the file cannot be read;
+- support ordinary CSV files containing numeric, categorical/string, boolean-like, and missing values.
+
+Example intended usage:
+
+```bash
+python main.py data/sample.csv
+```
+
+or, if a package-style entry point is used later:
+
+```bash
+python -m csv_quality_reporter data/sample.csv
+```
+
+For simplicity, I recommend using the first form unless the assignment specifically rewards package entry points.
+
+---
+
+## 2.2 Dataset Dimensions
+
+The report should include:
+
+```text
+Rows: 1000
+Columns: 12
+```
+
+This should come directly from:
+
+```python
+df.shape
+```
+
+No interpretation is required beyond reporting the number of rows and columns.
+
+---
+
+## 2.3 Column Data Types
+
+The report should list each column and its pandas-inferred data type.
+
+Example:
+
+```text
+Column Data Types
+-----------------
+customer_id     int64
+age             float64
+state           object
+is_active       bool
+```
+
+The goal is transparency rather than automatically changing data types.
+
+The program should not attempt aggressive type inference or automatic type conversion in the first version.
+
+---
+
+## 2.4 Missing-Value Analysis
+
+For each column, calculate:
+
+- number of missing values;
+- percentage of rows that are missing.
+
+Example:
+
+```text
+Missing Values
+--------------
+age          15   1.50%
+income        3   0.30%
+state         0   0.00%
+```
+
+Missing values should be identified using pandas:
+
+```python
+df.isna()
+```
+
+This means actual values recognized by pandas as missing, such as empty CSV fields or `NaN`, count as missing.
+
+Strings such as:
+
+```text
+"NA"
+"unknown"
+"missing"
+"N/A"
+```
+
+should not automatically be treated as missing unless pandas already interprets them that way.
+
+This avoids introducing subjective data-cleaning rules.
+
+---
+
+## 2.5 Duplicate Rows
+
+The report should calculate the number of duplicated rows using:
+
+```python
+df.duplicated().sum()
+```
+
+The definition should be:
+
+> A duplicate row is a row whose values across all columns exactly match an earlier row.
+
+Example:
+
+```text
+Duplicate Rows
+--------------
+Duplicate rows: 8
+Duplicate percentage: 0.80%
+```
+
+The application should report duplicates but should not delete them.
+
+---
+
+## 2.6 Numeric Summary Statistics
+
+For numeric columns, provide standard descriptive statistics.
+
+Recommended statistics:
+
+- count;
+- mean;
+- standard deviation;
+- minimum;
+- 25th percentile;
+- median;
+- 75th percentile;
+- maximum.
+
+Using:
+
+```python
+df.describe()
+```
+
+or:
+
+```python
+numeric_df.describe()
+```
+
+is appropriate.
+
+The program should avoid manually reimplementing standard statistics that pandas already provides correctly.
+
+If no numeric columns exist, the report should say something like:
+
+```text
+No numeric columns found.
+```
+
+rather than failing.
+
+---
+
+# 3. Numeric Outlier Logic
+
+## 3.1 Outlier Definition
+
+Use the standard IQR rule.
+
+For each numeric column:
+
+```text
+Q1 = 25th percentile
+Q3 = 75th percentile
+IQR = Q3 - Q1
+```
+
+Define:
+
+```text
+lower bound = Q1 - 1.5 × IQR
+upper bound = Q3 + 1.5 × IQR
+```
+
+A value is an outlier when:
+
+```text
+value < lower bound
+```
+
+or:
+
+```text
+value > upper bound
+```
+
+Missing numeric values should be ignored during this calculation.
+
+---
+
+## 3.2 Outlier Report
+
+For each numeric column, report:
+
+- lower bound;
+- upper bound;
+- number of outliers;
+- optionally percentage of non-missing observations that are outliers.
+
+Example:
+
+```text
+Numeric Outliers — IQR Method
+-----------------------------
+age:
+  lower bound: 3.5
+  upper bound: 79.5
+  outliers: 4
+
+income:
+  lower bound: -15000.0
+  upper bound: 125000.0
+  outliers: 17
+```
+
+The program should identify unusual observations but should not delete, cap, or otherwise modify them.
+
+---
+
+## 3.3 Constant Numeric Columns
+
+If a numeric column contains the same value in every non-missing row:
+
+```text
+Q1 = Q3
+IQR = 0
+```
+
+The column should normally report zero outliers because every non-missing observation equals the bounds.
+
+This case should be explicitly covered by a unit test.
+
+---
+
+# 4. Non-Functional Requirements
+
+The implementation should prioritize:
+
+### Readability
+
+Functions should have:
+
+- descriptive names;
+- short responsibilities;
+- docstrings where useful;
+- minimal nesting;
+- little duplicated code.
+
+### Modularity
+
+The CLI should not contain the actual statistical calculations.
+
+Instead:
+
+```text
+CLI
+ ↓
+load data
+ ↓
+analysis functions
+ ↓
+format/report results
+```
+
+This makes the project easier to test.
+
+### Reliability
+
+Expected user errors should produce clear messages instead of Python tracebacks where reasonable.
+
+### Reproducibility
+
+A clean environment should be able to run the application using documented dependencies.
+
+### Portability
+
+The project should work:
+
+- directly with Python;
+- through Docker.
+
+### Scope Control
+
+Avoid:
+
+- web applications;
+- databases;
+- configuration frameworks;
+- complex object-oriented hierarchies;
+- asynchronous code;
+- multiple reporting engines;
+- unnecessary third-party packages.
+
+`pandas`, `pytest`, and the Python standard library should be sufficient.
+
+---
+
+# 5. Proposed Repository Structure
+
+Recommended structure:
+
+```text
+csv-data-quality-reporter/
+│
+├── main.py
+├── reporter.py
+├── requirements.txt
+├── README.md
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
+│
+├── data/
+│   └── sample.csv
+│
+├── tests/
+│   ├── test_reporter.py
+│   └── test_cli.py
+│
+└── docs/
+    └── plan.md
+```
+
+This structure is deliberately simple.
+
+A more elaborate `src/` package layout is valid software engineering, but for a small IDS 706 project it may add structure without adding much educational value.
+
+---
+
+# 6. File Responsibilities
+
+## `main.py`
+
+Responsibilities:
+
+- define command-line arguments;
+- validate the provided path;
+- call the CSV loading function;
+- call the reporting functions;
+- print the completed report;
+- return appropriate exit codes.
+
+It should contain very little data-analysis logic.
+
+Conceptually:
+
+```text
+parse arguments
+      ↓
+load CSV
+      ↓
+generate report
+      ↓
+print report
+```
+
+---
+
+## `reporter.py`
+
+Contains the core reusable logic.
+
+Recommended functions:
+
+### `load_csv(path)`
+
+Responsibility:
+
+- load the provided CSV using pandas;
+- return a DataFrame;
+- raise or translate meaningful errors when the CSV cannot be loaded.
+
+---
+
+### `get_dimensions(df)`
+
+Returns:
+
+```python
+{
+    "rows": ...,
+    "columns": ...
+}
+```
+
+This function is simple, but separating it makes requirements and testing explicit.
+
+---
+
+### `get_column_types(df)`
+
+Returns information describing each column's dtype.
+
+Possible return form:
+
+```python
+{
+    "age": "float64",
+    "state": "object"
+}
+```
+
+---
+
+### `get_missing_values(df)`
+
+Returns missing count and percentage for every column.
+
+Possible structure:
+
+```python
+{
+    "age": {
+        "count": 5,
+        "percentage": 2.5
+    }
+}
+```
+
+---
+
+### `get_duplicate_summary(df)`
+
+Returns something like:
+
+```python
+{
+    "count": 4,
+    "percentage": 1.7
+}
+```
+
+---
+
+### `get_numeric_summary(df)`
+
+Select numeric columns and return descriptive statistics.
+
+Possible use:
+
+```python
+df.select_dtypes(include="number")
+```
+
+If no numeric columns exist, return an empty structure rather than raising an exception.
+
+---
+
+### `detect_iqr_outliers(series)`
+
+This should contain the core IQR logic for one numeric pandas Series.
+
+Responsibilities:
+
+- drop missing values;
+- calculate Q1;
+- calculate Q3;
+- calculate IQR;
+- calculate lower and upper bounds;
+- count observations outside the bounds.
+
+This function is especially important to unit test independently.
+
+---
+
+### `get_outlier_summary(df)`
+
+Select numeric columns and apply:
+
+```python
+detect_iqr_outliers()
+```
+
+to each numeric column.
+
+Returns a structured dictionary or DataFrame describing the result.
+
+---
+
+### `generate_report(df)`
+
+Coordinates the different analysis functions.
+
+Example conceptual flow:
+
+```text
+dimensions
+column types
+missing values
+duplicates
+numeric statistics
+outliers
+```
+
+It should produce either:
+
+- a structured object passed to a formatter; or
+- the final report string.
+
+For this project's size, either design is reasonable.
+
+I slightly prefer separating analysis from presentation:
+
+```python
+analysis = analyze_dataframe(df)
+report = format_report(analysis)
+```
+
+because calculations can then be tested without comparing large strings.
+
+---
+
+### `format_report(results)`
+
+Responsible only for readable text formatting.
+
+It should not perform statistical calculations.
+
+This gives a useful separation:
+
+```text
+data analysis
+    versus
+presentation
+```
+
+---
+
+# 7. Recommended Internal Design
+
+A practical top-level design would be:
+
+```python
+load_csv()
+    ↓
+analyze_dataframe()
+    ├── get_dimensions()
+    ├── get_column_types()
+    ├── get_missing_values()
+    ├── get_duplicate_summary()
+    ├── get_numeric_summary()
+    └── get_outlier_summary()
+              ↓
+       detect_iqr_outliers()
+    ↓
+format_report()
+```
+
+This remains simple while still demonstrating modular design.
+
+---
+
+# 8. Command-Line Interface
+
+Use Python's standard:
+
+```python
+argparse
+```
+
+rather than adding a package such as Click or Typer.
+
+Recommended command:
+
+```bash
+python main.py <csv_file>
+```
+
+Example:
+
+```bash
+python main.py data/sample.csv
+```
+
+Help:
+
+```bash
+python main.py --help
+```
+
+Expected output:
+
+```text
+usage: main.py [-h] csv_file
+
+Generate a data-quality report for a CSV file.
+
+positional arguments:
+  csv_file    Path to the CSV file to analyze
+```
+
+---
+
+# 9. CLI Success Behavior
+
+For:
+
+```bash
+python main.py data/sample.csv
+```
+
+the output should follow a predictable order:
+
+```text
+CSV Data Quality Report
+=======================
+
+File: data/sample.csv
+
+Dataset Dimensions
+------------------
+Rows: ...
+Columns: ...
+
+Column Data Types
+-----------------
+...
+
+Missing Values
+--------------
+...
+
+Duplicate Rows
+--------------
+...
+
+Numeric Summary Statistics
+--------------------------
+...
+
+Numeric Outliers — IQR Method
+-----------------------------
+...
+```
+
+This predictable structure will help both users and tests.
+
+---
+
+# 10. CLI Error Behavior
+
+The CLI should handle at least:
+
+### Missing argument
+
+```bash
+python main.py
+```
+
+`argparse` should display usage instructions.
+
+### File not found
+
+```bash
+python main.py nonexistent.csv
+```
+
+Expected behavior:
+
+```text
+Error: CSV file not found: nonexistent.csv
+```
+
+and a nonzero exit status.
+
+### Invalid/unreadable CSV
+
+If pandas cannot parse the input, the user should receive a concise error message.
+
+### Directory supplied instead of file
+
+Reject it clearly.
+
+The project does not need sophisticated error-recovery logic.
+
+---
+
+# 11. Testing Strategy
+
+Use:
+
+```text
+pytest
+```
+
+The tests should demonstrate both unit testing and higher-level integration testing.
+
+---
+
+# 12. Unit Tests
+
+`tests/test_reporter.py`
+
+Important tests should include:
+
+## Dimensions
+
+Given a known DataFrame:
+
+```python
+3 rows × 2 columns
+```
+
+verify:
+
+```python
+rows == 3
+columns == 2
+```
+
+---
+
+## Missing Values
+
+Create a DataFrame containing known `NaN` values.
+
+Verify:
+
+- missing counts;
+- missing percentages;
+- columns with zero missing values.
+
+---
+
+## Duplicate Rows
+
+Create a DataFrame with intentional duplicate records.
+
+Verify the expected duplicate count.
+
+Also verify a DataFrame with no duplicates returns zero.
+
+---
+
+## Numeric Summary
+
+Use a small numeric dataset where values can easily be verified.
+
+Avoid tests that simply duplicate pandas internals unnecessarily.
+
+It is enough to verify that:
+
+- numeric columns are included;
+- nonnumeric columns are excluded;
+- expected statistics are present.
+
+---
+
+## IQR Outlier Detection
+
+Use a simple series such as:
+
+```text
+1, 2, 2, 3, 3, 4, 100
+```
+
+and verify that the extreme observation is detected according to the computed bounds.
+
+Tests should verify:
+
+- Q1;
+- Q3;
+- IQR;
+- lower bound;
+- upper bound;
+- outlier count.
+
+This is one of the most important pieces of custom logic.
+
+---
+
+## IQR With Missing Values
+
+Example:
+
+```text
+1, 2, NaN, 3, 4, 100
+```
+
+Confirm that missing values do not cause an error or count as outliers.
+
+---
+
+## Constant Column
+
+Example:
+
+```text
+5, 5, 5, 5, 5
+```
+
+Expected:
+
+```text
+IQR = 0
+outlier count = 0
+```
+
+---
+
+## No Numeric Columns
+
+Example:
+
+```text
+name
+Alice
+Bob
+Carol
+```
+
+Verify:
+
+- numeric summary is empty;
+- outlier summary is empty;
+- the application still generates a valid report.
+
+---
+
+# 13. Integration Tests
+
+`tests/test_cli.py`
+
+The integration tests should exercise the application more like a real user.
+
+Use either:
+
+```python
+subprocess.run(...)
+```
+
+or call the CLI's main function with controlled arguments.
+
+For educational clarity, `subprocess.run()` is useful because it tests the actual command.
+
+Example test concept:
+
+```bash
+python main.py tests/data/test.csv
+```
+
+Verify:
+
+- return code is `0`;
+- output contains `"CSV Data Quality Report"`;
+- output contains `"Dataset Dimensions"`;
+- output contains `"Missing Values"`;
+- output contains `"Duplicate Rows"`;
+- output contains `"Numeric Outliers"`.
+
+---
+
+# 14. CLI Error Integration Test
+
+Run something like:
+
+```bash
+python main.py nonexistent.csv
+```
+
+Verify:
+
+- nonzero exit status;
+- helpful error message.
+
+This confirms that the actual CLI handles failure correctly.
+
+---
+
+# 15. Test Data
+
+Small CSV fixtures are preferable to large datasets.
+
+Possible structure:
+
+```text
+tests/
+├── data/
+│   ├── normal.csv
+│   ├── missing_values.csv
+│   ├── duplicates.csv
+│   ├── no_numeric.csv
+│   └── empty.csv
+├── test_reporter.py
+└── test_cli.py
+```
+
+However, creating DataFrames directly inside unit tests is also useful.
+
+Recommended combination:
+
+- construct DataFrames directly for unit tests;
+- keep one or two CSV files for integration tests.
+
+Avoid maintaining many CSV fixtures unless they add clear value.
+
+---
+
+# 16. Important Edge Cases
+
+The implementation should intentionally consider the following.
+
+## Empty CSV
+
+A file may contain headers but zero rows.
+
+Example:
+
+```text
+name,age,state
+```
+
+Expected behavior:
+
+- rows = 0;
+- columns = 3;
+- missing percentages should avoid division-by-zero errors;
+- numeric statistics may be empty;
+- duplicate count = 0.
+
+Percentage behavior should be defined explicitly.
+
+Recommended choice:
+
+```text
+0.00%
+```
+
+for missing and duplicate percentages when there are zero rows.
+
+---
+
+## Completely Empty File
+
+A zero-byte file may cause pandas to raise:
+
+```text
+EmptyDataError
+```
+
+This should become a helpful user-facing error.
+
+Example:
+
+```text
+Error: CSV file contains no readable data.
+```
+
+---
+
+## No Numeric Columns
+
+Must not fail.
+
+Print:
+
+```text
+No numeric columns found.
+```
+
+for numeric summary and outlier sections.
+
+---
+
+## All-Missing Numeric Column
+
+An apparently numeric column containing only missing values may behave differently depending on pandas inference.
+
+If selected as numeric but contains no valid observations, the outlier function should detect the empty non-missing series and report that outlier analysis is unavailable rather than calculating invalid bounds.
+
+---
+
+## One Numeric Observation
+
+Quartiles can still technically be computed.
+
+The report should not fail.
+
+It is acceptable to rely on pandas quantile behavior and report zero outliers.
+
+---
+
+## Constant Numeric Column
+
+Must avoid treating every observation as an outlier when IQR is zero.
+
+Expected result:
+
+```text
+Outliers: 0
+```
+
+for ordinary constant data.
+
+---
+
+## Very Large Outlier
+
+Large numeric values should be handled normally by pandas.
+
+No custom overflow handling should be necessary for ordinary datasets.
+
+---
+
+## Missing Values
+
+Missing numeric values must not count as outliers.
+
+---
+
+## Duplicate Rows Containing Missing Values
+
+Use pandas' standard duplicate behavior rather than inventing special rules.
+
+Document that duplicate detection is based on pandas' row-comparison behavior.
+
+---
+
+## Mixed Types
+
+A column like:
+
+```text
+1
+2
+three
+4
+```
+
+may be loaded as object/string.
+
+It should therefore not be included in numeric statistics.
+
+The program should not attempt to coerce it automatically.
+
+---
+
+## CSV Parsing Problems
+
+Malformed rows may cause pandas parsing errors.
+
+A readable error is sufficient.
+
+Automatically repairing malformed CSV files is out of scope.
+
+---
+
+# 17. Docker Approach
+
+Use a single lightweight Python image.
+
+Recommended base image:
+
+```dockerfile
+python:3.12-slim
+```
+
+The Dockerfile should conceptually:
+
+1. choose the Python base image;
+2. create a working directory;
+3. copy dependency definitions;
+4. install dependencies;
+5. copy project files;
+6. define a useful default command.
+
+Conceptual structure:
+
+```text
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install ...
+
+COPY . .
+
+CMD [...]
+```
+
+The final Dockerfile implementation should keep the image simple rather than optimizing every possible layer.
+
+---
+
+# 18. Meaningful Container Execution
+
+The container should do more than:
+
+```text
+print("Hello world")
+```
+
+It should execute an actual CSV analysis.
+
+Recommended design:
+
+include:
+
+```text
+data/sample.csv
+```
+
+inside the repository and make the default container command analyze that dataset.
+
+Conceptually:
+
+```text
+docker run csv-quality-reporter
+```
+
+should produce a complete data-quality report for:
+
+```text
+data/sample.csv
+```
+
+This demonstrates that the container actually runs the project.
+
+---
+
+# 19. User-Provided CSV Through Docker
+
+Documentation should also show how a user can analyze a local CSV through a mounted volume.
+
+Example concept:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/data:/data" \
+  csv-quality-reporter \
+  python main.py /data/my_file.csv
+```
+
+The exact command should be tested before inclusion in the final README.
+
+This gives both:
+
+- a self-contained demonstration;
+- practical user-provided file support.
+
+---
+
+# 20. `.dockerignore`
+
+The `.dockerignore` should exclude unnecessary files such as:
+
+```text
+.git
+.github
+__pycache__
+.pytest_cache
+*.pyc
+.venv
+venv
+tests
+docs
+README.md
+```
+
+Whether tests and docs are excluded is a design choice.
+
+For this assignment, excluding them is reasonable if they are not needed for runtime.
+
+Keep:
+
+```text
+data/sample.csv
+```
+
+because the default container should run meaningful analysis.
+
+---
+
+# 21. Dependencies
+
+Keep dependencies minimal.
+
+Potential `requirements.txt`:
+
+```text
+pandas
+pytest
+```
+
+However, `pytest` is not required in the production Docker image unless tests are intentionally executed inside the container.
+
+Two possible approaches exist.
+
+### Simpler student-project approach
+
+Put both dependencies in:
+
+```text
+requirements.txt
+```
+
+This is easiest to explain.
+
+### Slightly cleaner approach
+
+```text
+requirements.txt
+requirements-dev.txt
+```
+
+with:
+
+```text
+requirements.txt
+    pandas
+```
+
+and:
+
+```text
+requirements-dev.txt
+    -r requirements.txt
+    pytest
+```
+
+For this assignment, I recommend the first approach unless dependency separation is specifically required.
+
+Simplicity is more valuable than optimizing a very small image.
+
+---
+
+# 22. Manual Smoke Test
+
+The README should include a manual verification procedure.
+
+Recommended sequence:
+
+### 1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Confirm CLI help
+
+```bash
+python main.py --help
+```
+
+Expected:
+
+- command description;
+- CSV path argument displayed.
+
+### 3. Run sample analysis
+
+```bash
+python main.py data/sample.csv
+```
+
+Manually verify that output contains:
+
+- dimensions;
+- data types;
+- missing-value report;
+- duplicate count;
+- numeric summary;
+- IQR outlier report.
+
+### 4. Test invalid file
+
+```bash
+python main.py does_not_exist.csv
+```
+
+Verify:
+
+- understandable error;
+- no giant traceback during normal CLI use.
+
+### 5. Run automated tests
+
+```bash
+pytest
+```
+
+Verify all tests pass.
+
+### 6. Build Docker image
+
+```bash
+docker build -t csv-quality-reporter .
+```
+
+### 7. Run container
+
+```bash
+docker run --rm csv-quality-reporter
+```
+
+Verify that a real sample analysis is printed.
+
+### 8. Optional mounted-file test
+
+Mount a local CSV and verify that the container can analyze user-provided input.
+
+This procedure provides clear manual evidence that the system works end to end.
+
+---
+
+# 23. Documentation Requirements
+
+The `README.md` should eventually contain:
+
+- project description;
+- features;
+- requirements;
+- installation;
+- usage;
+- CLI example;
+- test instructions;
+- Docker build instructions;
+- Docker run instructions;
+- manual smoke-test procedure;
+- explanation of IQR outlier detection;
+- limitations.
+
+The README should match the actual implementation exactly.
+
+Commands should be copied from commands that were actually tested rather than written from memory.
+
+---
+
+# 24. `docs/plan.md`
+
+The final `docs/plan.md` should document the agreed architecture before implementation.
+
+It should contain approximately these sections:
+
+```text
+# CSV Data Quality Reporter — Implementation Plan
+
+## Project Goal
+## Requirements
+## Repository Structure
+## Core Components
+## CLI Design
+## Data Quality Logic
+## Outlier Detection
+## Error Handling
+## Testing Strategy
+## Docker Strategy
+## Smoke Testing
+## Edge Cases
+## Risks and Design Decisions
+## Implementation Order
+```
+
+It should describe what will be built rather than pretending the functionality already exists.
+
+---
+
+# 25. Risks and Design Concerns
+
+## Risk 1: Mixing calculations and formatting
+
+If functions calculate statistics while simultaneously printing output, tests become harder.
+
+Mitigation:
+
+```text
+calculate first → format later
+```
+
+---
+
+## Risk 2: Overengineering
+
+It would be easy to create:
+
+- reporter classes;
+- analyzer classes;
+- multiple packages;
+- configuration objects;
+- logging frameworks;
+- plugin systems.
+
+These are unnecessary.
+
+Mitigation:
+
+Use several small functions in one analysis module.
+
+---
+
+## Risk 3: Ambiguous Missing-Value Rules
+
+Users may assume strings such as `"unknown"` are missing.
+
+Mitigation:
+
+Clearly document that missing values follow pandas' standard CSV parsing and `isna()` behavior.
+
+Do not silently add domain-specific missing markers.
+
+---
+
+## Risk 4: Outlier Interpretation
+
+An IQR outlier is not necessarily a bad observation.
+
+Mitigation:
+
+Use wording such as:
+
+```text
+IQR outlier
+```
+
+rather than:
+
+```text
+error
+```
+
+The application identifies statistical extremes, not incorrect data.
+
+---
+
+## Risk 5: Mixed-Type Columns
+
+Values that look numeric may be interpreted as strings because of one invalid entry.
+
+Mitigation:
+
+Report pandas-inferred types and do not perform automatic coercion.
+
+This behavior should be documented.
+
+---
+
+## Risk 6: Report Formatting Tests Becoming Fragile
+
+Testing entire multiline reports character-for-character would make small formatting changes break many tests.
+
+Mitigation:
+
+Unit-test structured calculations separately.
+
+Integration tests should check for key report sections rather than exact full output.
+
+---
+
+## Risk 7: Docker Documentation Not Matching Reality
+
+Docker commands frequently become stale or contain path errors.
+
+Mitigation:
+
+Every documented Docker command should be included in the final smoke-test procedure and manually executed before submission.
+
+---
+
+# 26. Recommended Implementation Order
+
+## Phase 1 — Project Skeleton
+
+Create:
+
+```text
+main.py
+reporter.py
+tests/
+docs/
+data/
+README.md
+requirements.txt
+.gitignore
+```
+
+Add `docs/plan.md` after the architectural plan is approved.
+
+---
+
+## Phase 2 — Core Analysis Functions
+
+Implement and test:
+
+```text
+get_dimensions()
+get_column_types()
+get_missing_values()
+get_duplicate_summary()
+```
+
+These are low-risk functions and establish the project structure.
+
+---
+
+## Phase 3 — Numeric Statistics
+
+Implement:
+
+```text
+get_numeric_summary()
+```
+
+Test numeric and nonnumeric datasets.
+
+---
+
+## Phase 4 — IQR Outlier Logic
+
+Implement:
+
+```text
+detect_iqr_outliers()
+get_outlier_summary()
+```
+
+Add focused tests for:
+
+- normal data;
+- clear outlier;
+- missing values;
+- constant values;
+- no numeric columns.
+
+This should receive the most careful unit testing because it contains the main custom statistical logic.
+
+---
+
+## Phase 5 — Full Analysis Pipeline
+
+Create something like:
+
+```text
+analyze_dataframe()
+```
+
+that combines the individual components into one structured result.
+
+---
+
+## Phase 6 — Report Formatting
+
+Implement:
+
+```text
+format_report()
+```
+
+Verify that all required sections appear clearly.
+
+---
+
+## Phase 7 — CLI
+
+Implement `argparse` in:
+
+```text
+main.py
+```
+
+Connect:
+
+```text
+path
+ → load_csv
+ → analyze_dataframe
+ → format_report
+ → print
+```
+
+Add error handling and return codes.
+
+---
+
+## Phase 8 — Integration Testing
+
+Add tests that run the real command against a small CSV file.
+
+Verify both:
+
+- successful analysis;
+- invalid-path handling.
+
+---
+
+## Phase 9 — Sample Dataset
+
+Create a small:
+
+```text
+data/sample.csv
+```
+
+containing intentionally:
+
+- numeric values;
+- text values;
+- missing values;
+- one duplicate row;
+- at least one obvious numeric outlier.
+
+This ensures the default demonstration exercises several project features.
+
+---
+
+## Phase 10 — Docker
+
+Create:
+
+```text
+Dockerfile
+.dockerignore
+```
+
+Build the image and verify:
+
+```bash
+docker run --rm csv-quality-reporter
+```
+
+produces a genuine analysis.
+
+Then test a mounted user CSV.
+
+---
+
+## Phase 11 — Documentation
+
+Finish the README only after all commands are working.
+
+Document:
+
+```text
+setup
+usage
+tests
+Docker
+manual smoke test
+limitations
+```
+
+---
+
+## Phase 12 — Final Verification
+
+Run:
+
+```bash
+pytest
+```
+
+Then manually execute the full smoke-test procedure from a clean terminal.
+
+Confirm:
+
+- normal CSV works;
+- missing file behaves correctly;
+- edge cases do not crash;
+- Docker image builds;
+- container executes analysis;
+- README commands match actual behavior.
+
+---
+
+# 27. Recommended Scope Boundary
+
+For the initial IDS 706 submission, I recommend explicitly excluding:
+
+- automatic data cleaning;
+- automatic type conversion;
+- CSV modification;
+- HTML reports;
+- JSON reports;
+- charts;
+- web interfaces;
+- database input;
+- Excel input;
+- machine-learning-based anomaly detection;
+- configurable outlier methods;
+- parallel processing;
+- advanced logging infrastructure.
+
+These could be future enhancements but are not needed to demonstrate strong AI-assisted software-development practices.
+
+---
+
+# 28. Final Architectural Recommendation
+
+Use this architecture:
+
+```text
+              main.py
+                 │
+                 ▼
+             load_csv()
+                 │
+                 ▼
+        analyze_dataframe()
+          /      |       \
+         /       |        \
+dimensions    missing    duplicates
+types         numeric    outliers
+                 │
+                 ▼
+           structured result
+                 │
+                 ▼
+           format_report()
+                 │
+                 ▼
+              stdout
+```
+
+The key principle is:
+
+```text
+I/O → analysis → presentation
+```
+
+Keep those three responsibilities reasonably separate.
+
+That gives the project enough structure to demonstrate good software engineering without making a relatively small CSV utility unnecessarily complicated.
+
+The main design choice I’d preserve is the separation between **calculation functions and report formatting**. That will make your tests much cleaner and also gives you a strong architecture/design decision to explain in the assignment.
+
+[STUDENT]
+I want the project to remain beginner-friendly and easy to explain. Review your plan and identify anything that may be unnecessarily complex. Also clarify how the program should behave with an empty CSV, a CSV containing only text columns, and a missing input file.
+
+[AGENT]
+Yes — I would simplify the original plan a bit. The current architecture is reasonable, but a few parts are more structured than this project really needs.
+
+The main simplification is to avoid creating too many tiny functions just for the sake of modularity. For a beginner-friendly project, I would keep `main.py` plus one analysis module and use roughly **four core functions** instead of a large collection of helpers.
+
+# Simplified Architecture Review
+
+## What I Would Simplify
+
+### 1. Reduce the number of analysis functions
+
+The earlier plan proposed functions such as:
+
+```text
+get_dimensions()
+get_column_types()
+get_missing_values()
+get_duplicate_summary()
+get_numeric_summary()
+get_outlier_summary()
+detect_iqr_outliers()
+analyze_dataframe()
+format_report()
+```
+
+This is clean from a software-design perspective, but for a small graduate course project it may feel unnecessarily fragmented.
+
+A simpler structure would be:
+
+```text
+load_csv()
+analyze_dataframe()
+detect_iqr_outliers()
+format_report()
+```
+
+### Recommended responsibilities
+
+#### `load_csv(path)`
+
+- checks and loads the CSV;
+- handles readable CSV-related errors.
+
+#### `analyze_dataframe(df)`
+
+Calculates:
+
+- dimensions;
+- column types;
+- missing values;
+- duplicate count;
+- numeric summary statistics;
+- per-column IQR outlier information.
+
+It can call `detect_iqr_outliers()` for each numeric column.
+
+#### `detect_iqr_outliers(series)`
+
+Keeps the IQR calculation separate because this is the main piece of custom statistical logic and deserves its own unit tests.
+
+#### `format_report(results)`
+
+Turns the calculated results into readable command-line output.
+
+This is enough separation to demonstrate good software engineering without making the code harder to explain.
+
+---
+
+## 2. Keep only two main Python files
+
+Recommended repository structure:
+
+```text
+csv-data-quality-reporter/
+│
+├── main.py
+├── reporter.py
+├── requirements.txt
+├── README.md
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
+│
+├── data/
+│   └── sample.csv
+│
+├── tests/
+│   ├── test_reporter.py
+│   └── test_cli.py
+│
+└── docs/
+    └── plan.md
+```
+
+There is no need for:
+
+```text
+src/
+csv_quality_reporter/
+utils/
+models/
+services/
+config/
+```
+
+for a project this small.
+
+Those structures are useful in larger applications, but here they would make the project look more complicated than the actual problem requires.
+
+---
+
+## 3. Do not introduce classes
+
+The project does not need classes such as:
+
+```text
+CSVAnalyzer
+DataQualityReport
+OutlierDetector
+ReportFormatter
+```
+
+Plain Python functions are easier to:
+
+- write;
+- test;
+- explain;
+- debug.
+
+The project is essentially a sequence of dataframe operations, so a functional approach is more natural.
+
+---
+
+## 4. Keep `argparse`, but keep the CLI minimal
+
+`argparse` is appropriate because it is part of Python's standard library.
+
+The CLI only needs one required positional argument:
+
+```bash
+python main.py path/to/file.csv
+```
+
+and standard help:
+
+```bash
+python main.py --help
+```
+
+I would not add options such as:
+
+```text
+--output
+--format
+--threshold
+--verbose
+--missing-strategy
+--outlier-method
+```
+
+unless the assignment specifically requires them.
+
+They increase testing and documentation requirements without improving the core learning objective.
+
+---
+
+## 5. Keep the report on stdout
+
+The program should simply print the report to the terminal.
+
+Do not initially support:
+
+- writing TXT files;
+- JSON output;
+- HTML output;
+- CSV output;
+- PDF reports.
+
+Those could be listed as possible future improvements.
+
+---
+
+## 6. Keep dependencies minimal
+
+For the implementation itself:
+
+```text
+pandas
+```
+
+For testing:
+
+```text
+pytest
+```
+
+That is enough.
+
+There is no need for:
+
+- Click;
+- Typer;
+- Rich;
+- NumPy explicitly;
+- Pydantic;
+- logging libraries.
+
+Pandas already depends on NumPy internally, but the project does not need to use NumPy directly unless implementation later makes it helpful.
+
+---
+
+# Simplified Program Flow
+
+The whole application can be explained as:
+
+```text
+User provides CSV path
+        ↓
+main.py parses the argument
+        ↓
+load_csv()
+        ↓
+analyze_dataframe()
+        ↓
+detect_iqr_outliers() for numeric columns
+        ↓
+format_report()
+        ↓
+print report
+```
+
+That is probably the clearest architecture for this assignment.
+
+---
+
+# Required Edge-Case Behavior
+
+These behaviors should be decided before implementation so the tests and documentation agree with the design.
+
+## 1. Missing Input File
+
+Example:
+
+```bash
+python main.py data/does_not_exist.csv
+```
+
+The program should:
+
+1. detect that the file does not exist;
+2. print a short, understandable error;
+3. exit with a nonzero status;
+4. not display a long traceback for this expected user error.
+
+Recommended output:
+
+```text
+Error: File not found: data/does_not_exist.csv
+```
+
+Recommended result:
+
+```text
+exit code != 0
+```
+
+This should be covered by an integration test.
+
+There is no reason to create an empty report or silently continue.
+
+---
+
+# 2. CSV Containing Only Text Columns
+
+Example:
+
+```csv
+name,state,status
+Alice,NC,active
+Bob,WA,inactive
+Carol,IL,active
+```
+
+This is a completely valid dataset.
+
+The program should still report:
+
+```text
+Dataset Dimensions
+Column Data Types
+Missing Values
+Duplicate Rows
+```
+
+For the numeric sections, it should not fail.
+
+Recommended output:
+
+```text
+Numeric Summary Statistics
+--------------------------
+No numeric columns found.
+
+Numeric Outliers — IQR Method
+-----------------------------
+No numeric columns found.
+```
+
+This behavior is simple and easy to explain:
+
+> Numeric analyses are performed only when numeric columns are present.
+
+This case should have a unit test.
+
+---
+
+# 3. Empty CSV
+
+There are actually two different meanings of "empty CSV," and they should be handled separately.
+
+## Case A: CSV has column headers but zero data rows
+
+Example:
+
+```csv
+name,age,state
+```
+
+Pandas can load this successfully.
+
+The program should treat it as a valid but empty dataset.
+
+Expected report:
+
+```text
+Dataset Dimensions
+------------------
+Rows: 0
+Columns: 3
+```
+
+It should still show the inferred column types.
+
+For missing values:
+
+```text
+name     0
+age      0
+state    0
+```
+
+For percentages, avoid dividing by zero.
+
+Recommended behavior:
+
+```text
+0.00%
+```
+
+for every missing-value percentage.
+
+Duplicate rows:
+
+```text
+Duplicate rows: 0
+Duplicate percentage: 0.00%
+```
+
+Numeric statistics may not be available because no actual numeric values exist.
+
+Rather than exposing confusing `NaN` statistics, I recommend displaying:
+
+```text
+No numeric data available.
+```
+
+Likewise for outliers:
+
+```text
+No numeric data available for outlier detection.
+```
+
+This makes the report more understandable for a beginner audience.
+
+---
+
+## Case B: File contains absolutely nothing
+
+A zero-byte file such as:
+
+```text
+<no content>
+```
+
+is different.
+
+Pandas normally cannot infer any columns and may raise an `EmptyDataError`.
+
+The program should treat this as invalid input rather than as a zero-row dataset.
+
+Recommended output:
+
+```text
+Error: CSV file contains no data.
+```
+
+and return a nonzero exit code.
+
+This distinction is useful:
+
+```text
+headers + zero rows
+    = valid empty dataset
+
+zero-byte file
+    = invalid CSV input
+```
+
+That rule is easy to explain and test.
+
+---
+
+# Recommended Edge-Case Summary
+
+| Input | Behavior |
+|---|---|
+| Normal CSV | Generate full report |
+| CSV with text only | Generate report; say no numeric columns for numeric sections |
+| CSV with headers but zero rows | Generate valid empty-dataset report |
+| Completely empty file | Print clear error and exit nonzero |
+| Missing file | Print clear error and exit nonzero |
+
+---
+
+# Testing Implications
+
+The edge-case tests should therefore include at least:
+
+```text
+normal DataFrame
+text-only DataFrame
+header-only CSV
+zero-byte CSV
+missing file
+one obvious IQR outlier
+duplicate rows
+missing values
+```
+
+This is enough to demonstrate thoughtful testing without building an excessively large test suite.
+
+---
+
+# Revised Architecture Recommendation
+
+I would finalize the project around:
+
+```text
+main.py
+    CLI and user-facing error handling
+
+reporter.py
+    load_csv()
+    analyze_dataframe()
+    detect_iqr_outliers()
+    format_report()
+```
+
+with:
+
+```text
+tests/test_reporter.py
+tests/test_cli.py
+```
+
+This is simpler than my original plan while still meeting the assignment's requirements for organization, unit testing, integration testing, edge-case handling, Docker, and documentation.
+
+The main things I would remove from the earlier version are the many one-purpose `get_*()` functions, separate dev dependency files, optional output formats, and any package/class architecture. The four-function design above should be much easier to explain in both `docs/plan.md` and a code review.
+
+[STUDENT]
+I accept the simplified architecture and the clarified edge-case behavior.
+
+Please now produce the finalized contents of docs/plan.md in Markdown. Incorporate the following decisions:
+
+- Keep the project beginner-friendly.
+- Use a small number of clearly separated Python modules.
+- Use pandas for CSV analysis.
+- Use argparse for the command-line interface.
+- Report dataset shape, data types, missing values, duplicate rows, numeric summaries, and IQR-based outliers.
+- A missing input file should produce a clear error message and nonzero exit code.
+- An empty CSV should produce a clear message instead of a traceback.
+- A CSV containing only text columns should still produce the general report and explain that numeric summaries and outlier detection were skipped.
+- Include unit tests, integration tests, Docker, and a manual smoke-test procedure.
+- Avoid unnecessary frameworks, databases, web interfaces, or configuration systems.
+
+The plan should be specific enough for a separate Builder conversation to implement without making major architectural decisions. Do not implement any code. Return only the finalized Markdown content for docs/plan.md.
+
+[AGENT]
+# CSV Data Quality Reporter — Implementation Plan
+
+## 1. Project Goal
+
+Build a beginner-friendly Python command-line application that accepts a user-provided CSV file and prints a concise data-quality report.
+
+The project should demonstrate practical software-engineering skills without unnecessary complexity. It should be easy to explain, test, run locally, and run in Docker.
+
+The report must include:
+
+- dataset dimensions;
+- column data types;
+- missing values;
+- duplicate rows;
+- numeric summary statistics;
+- numeric outliers detected using the IQR method.
+
+The project should not modify the input CSV. It only analyzes and reports.
+
+---
+
+## 2. Design Principles
+
+The implementation should follow these principles:
+
+- Keep the architecture simple and beginner-friendly.
+- Use a small number of Python files with clear responsibilities.
+- Prefer plain functions over classes.
+- Use `pandas` for CSV loading and analysis.
+- Use Python's built-in `argparse` module for the CLI.
+- Separate data analysis from report formatting.
+- Handle expected user errors with clear messages instead of tracebacks.
+- Keep dependencies minimal.
+- Avoid frameworks, databases, web interfaces, configuration systems, plugin systems, and unnecessary abstraction.
+
+The main program flow should be:
+
+```text
+CSV path from user
+        ↓
+parse command-line argument
+        ↓
+load CSV
+        ↓
+analyze DataFrame
+        ↓
+format report
+        ↓
+print report
+```
+
+---
+
+## 3. Functional Requirements
+
+### 3.1 CSV Input
+
+The program must accept one required positional command-line argument representing the CSV file path.
+
+Expected usage:
+
+```bash
+python main.py data/sample.csv
+```
+
+The program must:
+
+- verify that the supplied path exists;
+- verify that it refers to a file rather than a directory;
+- attempt to load the file with `pandas.read_csv`;
+- produce a clear error if the file cannot be loaded.
+
+The first version should support CSV files only.
+
+It should not support:
+
+- Excel files;
+- databases;
+- URLs;
+- JSON input;
+- automatic file-type detection.
+
+---
+
+## 3.2 Dataset Dimensions
+
+The report must display:
+
+- number of rows;
+- number of columns.
+
+Use:
+
+```python
+df.shape
+```
+
+Example report section:
+
+```text
+Dataset Dimensions
+------------------
+Rows: 1000
+Columns: 12
+```
+
+---
+
+## 3.3 Column Data Types
+
+The report must display the pandas-inferred data type for every column.
+
+Example:
+
+```text
+Column Data Types
+-----------------
+customer_id    int64
+age            float64
+state          object
+active         bool
+```
+
+The program should report pandas' inferred types rather than aggressively converting data.
+
+Automatic type coercion is out of scope.
+
+---
+
+## 3.4 Missing Values
+
+For each column, report:
+
+- missing-value count;
+- missing-value percentage.
+
+Use pandas missing-value behavior based on:
+
+```python
+df.isna()
+```
+
+Example:
+
+```text
+Missing Values
+--------------
+age       5    2.50%
+state     0    0.00%
+income   10    5.00%
+```
+
+The program should not create custom rules that automatically treat values such as:
+
+```text
+unknown
+missing
+not available
+```
+
+as missing.
+
+Use pandas' standard CSV parsing behavior.
+
+If the DataFrame contains zero rows, missing-value percentages should be reported as `0.00%` rather than attempting division by zero.
+
+---
+
+## 3.5 Duplicate Rows
+
+The program must count duplicate rows using:
+
+```python
+df.duplicated().sum()
+```
+
+A duplicate row is a row whose values across all columns match a previously occurring row according to pandas' duplicate-detection behavior.
+
+The report should include:
+
+- duplicate row count;
+- duplicate row percentage.
+
+Example:
+
+```text
+Duplicate Rows
+--------------
+Duplicate rows: 4
+Duplicate percentage: 1.25%
+```
+
+For a zero-row dataset:
+
+```text
+Duplicate rows: 0
+Duplicate percentage: 0.00%
+```
+
+The program must only report duplicates. It must not remove them.
+
+---
+
+## 3.6 Numeric Summary Statistics
+
+The program should select numeric columns using pandas, for example:
+
+```python
+df.select_dtypes(include="number")
+```
+
+For numeric columns, report standard descriptive statistics including:
+
+- count;
+- mean;
+- standard deviation;
+- minimum;
+- 25th percentile;
+- median;
+- 75th percentile;
+- maximum.
+
+Using pandas `describe()` is appropriate.
+
+Example section:
+
+```text
+Numeric Summary Statistics
+--------------------------
+             age        income
+count      100.00        98.00
+mean        34.50     62000.00
+std         10.20     15000.00
+min         18.00     25000.00
+25%         27.00     51000.00
+50%         34.00     61000.00
+75%         42.00     72000.00
+max         79.00    130000.00
+```
+
+The program does not need custom statistical formulas for standard descriptive statistics.
+
+---
+
+## 3.7 Numeric Outlier Detection
+
+The program must detect numeric outliers using the IQR method.
+
+For each numeric column:
+
+```text
+Q1 = 25th percentile
+Q3 = 75th percentile
+IQR = Q3 - Q1
+lower bound = Q1 - 1.5 × IQR
+upper bound = Q3 + 1.5 × IQR
+```
+
+A non-missing value is an outlier if:
+
+```text
+value < lower bound
+```
+
+or:
+
+```text
+value > upper bound
+```
+
+Missing values must be ignored during outlier detection.
+
+For each numeric column, report:
+
+- Q1;
+- Q3;
+- IQR;
+- lower bound;
+- upper bound;
+- outlier count.
+
+Example:
+
+```text
+Numeric Outliers — IQR Method
+-----------------------------
+age
+  Q1: 27.00
+  Q3: 42.00
+  IQR: 15.00
+  Lower bound: 4.50
+  Upper bound: 64.50
+  Outliers: 3
+```
+
+The program should not remove, replace, cap, or otherwise modify outliers.
+
+The report should describe them as statistical outliers, not as errors.
+
+---
+
+## 4. Required Edge-Case Behavior
+
+### 4.1 Missing Input File
+
+Example:
+
+```bash
+python main.py data/does_not_exist.csv
+```
+
+Required behavior:
+
+- print a clear error message;
+- do not display a normal Python traceback for this expected error;
+- exit with a nonzero exit code.
+
+Recommended message:
+
+```text
+Error: File not found: data/does_not_exist.csv
+```
+
+---
+
+## 4.2 Directory Supplied Instead of File
+
+If the user supplies a directory path instead of a CSV file, the program should:
+
+- print a clear error;
+- exit nonzero.
+
+Example:
+
+```text
+Error: Input path is not a file: data/
+```
+
+---
+
+## 4.3 Completely Empty CSV File
+
+A zero-byte CSV file or a file containing no readable CSV data should not cause an uncaught pandas traceback.
+
+If pandas raises an error such as `EmptyDataError`, the program should convert it into a short user-facing message.
+
+Recommended output:
+
+```text
+Error: CSV file contains no readable data.
+```
+
+The program should exit with a nonzero status.
+
+---
+
+## 4.4 Header-Only CSV
+
+A CSV containing column headers but no data rows should be treated as a valid empty dataset.
+
+Example:
+
+```csv
+name,age,state
+```
+
+Expected behavior:
+
+```text
+Rows: 0
+Columns: 3
+```
+
+The program should still report:
+
+- column data types;
+- missing-value counts;
+- duplicate count.
+
+Missing percentages should be:
+
+```text
+0.00%
+```
+
+Duplicate count should be:
+
+```text
+0
+```
+
+Numeric analysis should not fail.
+
+If there is no usable numeric data, display a clear message such as:
+
+```text
+No numeric data available.
+```
+
+---
+
+## 4.5 CSV Containing Only Text Columns
+
+Example:
+
+```csv
+name,state,status
+Alice,NC,active
+Bob,WA,inactive
+Carol,IL,active
+```
+
+This must be treated as a valid dataset.
+
+The program should still report:
+
+- dimensions;
+- column data types;
+- missing values;
+- duplicate rows.
+
+For numeric sections, print clear messages instead of failing.
+
+Recommended output:
+
+```text
+Numeric Summary Statistics
+--------------------------
+No numeric columns found.
+
+Numeric Outliers — IQR Method
+-----------------------------
+No numeric columns found.
+```
+
+---
+
+## 4.6 Constant Numeric Column
+
+Example:
+
+```text
+5, 5, 5, 5, 5
+```
+
+Then:
+
+```text
+Q1 = 5
+Q3 = 5
+IQR = 0
+```
+
+Expected result:
+
+```text
+Outliers: 0
+```
+
+The program must not incorrectly classify all values as outliers.
+
+---
+
+## 4.7 Numeric Column With Missing Values
+
+Example:
+
+```text
+1, 2, NaN, 3, 4, 100
+```
+
+Missing values must be ignored when computing:
+
+- Q1;
+- Q3;
+- IQR;
+- bounds;
+- outlier count.
+
+Missing values themselves must not count as outliers.
+
+---
+
+## 4.8 All-Missing Numeric Data
+
+If a numeric column contains no non-missing values, the program should not attempt meaningful IQR calculations.
+
+It should return a clear result such as:
+
+```text
+No non-missing numeric values available for outlier detection.
+```
+
+The implementation should handle this without crashing.
+
+---
+
+## 4.9 Mixed-Type Columns
+
+A column such as:
+
+```text
+1
+2
+three
+4
+```
+
+may be interpreted by pandas as a text/object column.
+
+The program should respect pandas' inferred type and should not force the column to numeric.
+
+It should therefore be excluded from numeric summaries and IQR analysis.
+
+---
+
+## 5. Non-Functional Requirements
+
+### 5.1 Readability
+
+Code should use:
+
+- descriptive function names;
+- short functions;
+- clear variable names;
+- limited nesting;
+- minimal duplicated logic;
+- brief docstrings where useful.
+
+Avoid unnecessarily clever code.
+
+---
+
+### 5.2 Simplicity
+
+The project should remain understandable to a graduate student learning software engineering.
+
+Do not introduce:
+
+- custom class hierarchies;
+- dependency injection;
+- configuration frameworks;
+- web frameworks;
+- databases;
+- asynchronous programming;
+- plugin systems;
+- unnecessary design patterns.
+
+---
+
+### 5.3 Reliability
+
+Expected input errors should produce understandable messages.
+
+The application should handle required edge cases without unexpected crashes.
+
+---
+
+### 5.4 Testability
+
+Analysis functions should return structured results rather than directly printing everything.
+
+This allows unit tests to validate calculations independently of text formatting.
+
+---
+
+### 5.5 Reproducibility
+
+The project must include:
+
+- dependency instructions;
+- automated tests;
+- Docker support;
+- a sample CSV;
+- manual smoke-test instructions.
+
+---
+
+## 6. Repository Structure
+
+Use the following repository structure:
+
+```text
+csv-data-quality-reporter/
+│
+├── main.py
+├── reporter.py
+├── requirements.txt
+├── README.md
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
+│
+├── data/
+│   └── sample.csv
+│
+├── tests/
+│   ├── test_reporter.py
+│   ├── test_cli.py
+│   └── data/
+│       └── test.csv
+│
+└── docs/
+    └── plan.md
+```
+
+Do not create a larger package structure unless implementation later reveals a real need.
+
+In particular, do not add folders such as:
+
+```text
+src/
+services/
+models/
+controllers/
+config/
+utils/
+```
+
+for the initial version.
+
+---
+
+## 7. File Responsibilities
+
+### 7.1 `main.py`
+
+`main.py` is responsible for the command-line interface.
+
+Responsibilities:
+
+- create the `argparse` parser;
+- accept one positional CSV file path;
+- handle expected user-facing errors;
+- call functions from `reporter.py`;
+- print the final formatted report;
+- return an appropriate exit code.
+
+It should contain little or no statistical logic.
+
+Conceptual flow:
+
+```text
+parse arguments
+    ↓
+load CSV
+    ↓
+analyze DataFrame
+    ↓
+format report
+    ↓
+print
+```
+
+---
+
+## 7.2 `reporter.py`
+
+`reporter.py` contains the core analysis and formatting logic.
+
+Use approximately four main functions.
+
+### `load_csv(path)`
+
+Responsibilities:
+
+- validate that the path exists;
+- validate that the path is a file;
+- load it using `pandas.read_csv`;
+- translate expected CSV-loading errors into clear application-level errors.
+
+It should return a pandas DataFrame on success.
+
+---
+
+### `analyze_dataframe(df)`
+
+Responsibilities:
+
+- calculate dataset dimensions;
+- collect column data types;
+- calculate missing-value counts and percentages;
+- calculate duplicate count and percentage;
+- identify numeric columns;
+- calculate numeric summary statistics;
+- call `detect_iqr_outliers()` for each numeric column;
+- return a structured analysis result.
+
+The result may use dictionaries and pandas objects.
+
+Example conceptual structure:
+
+```text
+{
+    "dimensions": ...,
+    "dtypes": ...,
+    "missing": ...,
+    "duplicates": ...,
+    "numeric_summary": ...,
+    "outliers": ...
+}
+```
+
+Exact internal formatting may be chosen by the Builder, but the output must remain simple and testable.
+
+---
+
+### `detect_iqr_outliers(series)`
+
+Responsibilities:
+
+- remove missing values from the supplied numeric Series;
+- handle an empty non-missing Series safely;
+- calculate Q1;
+- calculate Q3;
+- calculate IQR;
+- calculate lower and upper bounds;
+- count values outside those bounds;
+- return the calculated values in a structured form.
+
+This function contains the main custom statistical logic and should receive focused unit tests.
+
+---
+
+### `format_report(results)`
+
+Responsibilities:
+
+- convert the structured analysis results into a readable multiline text report;
+- display report sections in a predictable order;
+- display special messages for skipped numeric analyses;
+- perform presentation only, not statistical calculations.
+
+---
+
+## 8. Command-Line Interface
+
+Use Python's standard `argparse` module.
+
+Required usage:
+
+```bash
+python main.py <csv_file>
+```
+
+Example:
+
+```bash
+python main.py data/sample.csv
+```
+
+Help command:
+
+```bash
+python main.py --help
+```
+
+Expected structure:
+
+```text
+usage: main.py [-h] csv_file
+
+Generate a data quality report for a CSV file.
+
+positional arguments:
+  csv_file    Path to the CSV file to analyze
+```
+
+Do not add additional CLI options in the initial version unless clearly necessary.
+
+In particular, do not initially add:
+
+```text
+--output
+--format
+--config
+--verbose
+--threshold
+--outlier-method
+```
+
+---
+
+## 9. Report Format
+
+The report should use a consistent section order.
+
+Recommended format:
+
+```text
+CSV Data Quality Report
+=======================
+
+File: data/sample.csv
+
+Dataset Dimensions
+------------------
+Rows: ...
+Columns: ...
+
+Column Data Types
+-----------------
+...
+
+Missing Values
+--------------
+...
+
+Duplicate Rows
+--------------
+...
+
+Numeric Summary Statistics
+--------------------------
+...
+
+Numeric Outliers — IQR Method
+-----------------------------
+...
+```
+
+The exact spacing may be adjusted during implementation, but section names and ordering should remain stable enough for documentation and integration testing.
+
+---
+
+## 10. Dependencies
+
+Keep dependencies minimal.
+
+Recommended `requirements.txt`:
+
+```text
+pandas
+pytest
+```
+
+No additional CLI framework is needed.
+
+Do not introduce packages such as:
+
+```text
+click
+typer
+rich
+pydantic
+flask
+django
+```
+
+unless a future requirement clearly justifies them.
+
+---
+
+## 11. Sample Dataset
+
+Create:
+
+```text
+data/sample.csv
+```
+
+The sample file should be small and intentionally include:
+
+- at least one numeric column;
+- at least one text column;
+- at least one missing value;
+- at least one duplicate row;
+- at least one obvious numeric outlier.
+
+The file should be designed so that running the application demonstrates most project features at once.
+
+The sample data should not contain sensitive or real personal information.
+
+---
+
+## 12. Testing Strategy
+
+Use `pytest`.
+
+Testing should be divided into:
+
+- unit tests for analysis logic;
+- integration tests for the real CLI behavior.
+
+Avoid testing pandas internals unnecessarily.
+
+Focus tests on project behavior and custom logic.
+
+---
+
+## 13. Unit Tests
+
+Place unit tests in:
+
+```text
+tests/test_reporter.py
+```
+
+Required test coverage should include the following.
+
+### 13.1 Dataset Dimensions
+
+Create a small DataFrame and confirm the correct row and column counts are returned.
+
+---
+
+### 13.2 Data Types
+
+Confirm that reported data types correspond to the DataFrame's pandas dtypes.
+
+---
+
+### 13.3 Missing Values
+
+Test a DataFrame with known missing values.
+
+Verify:
+
+- missing counts;
+- missing percentages;
+- zero-missing columns.
+
+Also test a zero-row DataFrame to ensure percentages do not cause division-by-zero errors.
+
+---
+
+### 13.4 Duplicate Rows
+
+Test:
+
+- a DataFrame containing duplicates;
+- a DataFrame with no duplicates;
+- a zero-row DataFrame.
+
+Verify correct counts and percentages.
+
+---
+
+### 13.5 Numeric Summary Statistics
+
+Test a small DataFrame with numeric and text columns.
+
+Verify that:
+
+- numeric columns are included;
+- text columns are excluded;
+- expected summary-statistic fields are present.
+
+Do not duplicate all pandas `describe()` calculations manually.
+
+---
+
+### 13.6 Text-Only DataFrame
+
+Create a DataFrame containing only text columns.
+
+Verify:
+
+- the general analysis succeeds;
+- numeric summary results indicate no numeric columns;
+- outlier results indicate no numeric columns.
+
+---
+
+### 13.7 IQR Outlier Detection
+
+Use a small numeric Series containing an obvious extreme value.
+
+Example:
+
+```text
+1, 2, 2, 3, 3, 4, 100
+```
+
+Verify:
+
+- Q1;
+- Q3;
+- IQR;
+- lower bound;
+- upper bound;
+- outlier count.
+
+This is one of the most important unit tests.
+
+---
+
+### 13.8 IQR With Missing Values
+
+Example:
+
+```text
+1, 2, NaN, 3, 4, 100
+```
+
+Verify that:
+
+- missing values are ignored;
+- missing values do not count as outliers;
+- the calculation does not fail.
+
+---
+
+### 13.9 Constant Numeric Column
+
+Example:
+
+```text
+5, 5, 5, 5
+```
+
+Verify:
+
+```text
+IQR = 0
+Outlier count = 0
+```
+
+---
+
+### 13.10 Empty Non-Missing Numeric Series
+
+Test a numeric Series containing only missing values.
+
+Verify that the function returns a safe, explicit result rather than crashing.
+
+---
+
+## 14. Integration Tests
+
+Place CLI integration tests in:
+
+```text
+tests/test_cli.py
+```
+
+Use `subprocess.run()` so that the tests exercise the application the way a real user would.
+
+---
+
+### 14.1 Successful CLI Run
+
+Run:
+
+```bash
+python main.py tests/data/test.csv
+```
+
+Verify:
+
+- return code is `0`;
+- output contains `CSV Data Quality Report`;
+- output contains `Dataset Dimensions`;
+- output contains `Column Data Types`;
+- output contains `Missing Values`;
+- output contains `Duplicate Rows`;
+- output contains `Numeric Summary Statistics`;
+- output contains `Numeric Outliers`.
+
+Do not compare the entire output character-for-character.
+
+---
+
+### 14.2 Missing File
+
+Run the program with a nonexistent path.
+
+Verify:
+
+- return code is nonzero;
+- output contains a clear file-not-found message;
+- no normal traceback is shown for this expected condition.
+
+---
+
+### 14.3 Completely Empty CSV
+
+Run the program using a zero-byte CSV fixture.
+
+Verify:
+
+- return code is nonzero;
+- output contains a clear empty-file message;
+- no uncaught traceback appears.
+
+---
+
+### 14.4 Text-Only CSV
+
+Run the CLI on a CSV containing only text columns.
+
+Verify:
+
+- return code is `0`;
+- general report sections appear;
+- numeric summary section explains that no numeric columns were found;
+- outlier section explains that no numeric columns were found.
+
+---
+
+### 14.5 Header-Only CSV
+
+Run the CLI on a CSV with headers but no data rows.
+
+Verify:
+
+- return code is `0`;
+- rows are reported as zero;
+- the report completes without crashing.
+
+---
+
+## 15. Docker Approach
+
+Provide:
+
+```text
+Dockerfile
+.dockerignore
+```
+
+Use a small official Python image such as:
+
+```text
+python:3.12-slim
+```
+
+The Docker image should:
+
+1. set a working directory;
+2. copy dependency definitions;
+3. install dependencies;
+4. copy the project files;
+5. run a meaningful default analysis.
+
+The container should not simply print a placeholder message.
+
+---
+
+## 16. Meaningful Default Container Behavior
+
+The default Docker command should analyze:
+
+```text
+data/sample.csv
+```
+
+Therefore:
+
+```bash
+docker run --rm csv-quality-reporter
+```
+
+should print an actual data-quality report.
+
+This proves that the container executes the real project logic.
+
+The exact Dockerfile syntax will be implemented later by the Builder.
+
+---
+
+## 17. User-Provided CSV With Docker
+
+The README should document how to mount a local directory containing a CSV file into the container and run the program against that file.
+
+Conceptually:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/data:/data" \
+  csv-quality-reporter \
+  python main.py /data/my_file.csv
+```
+
+The final command must be tested before being added to the README.
+
+---
+
+## 18. `.dockerignore`
+
+Exclude files not needed to run the application.
+
+Recommended entries:
+
+```text
+.git
+.github
+__pycache__
+.pytest_cache
+*.pyc
+.venv
+venv
+```
+
+Tests, docs, and README may also be excluded if they are not needed at runtime.
+
+Do not exclude:
+
+```text
+data/sample.csv
+```
+
+because the default container should analyze it.
+
+---
+
+## 19. Manual Smoke-Test Procedure
+
+The final README must include a manual smoke-test procedure.
+
+The Builder should verify every command before documenting it.
+
+### Step 1: Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Expected result:
+
+- dependencies install successfully.
+
+---
+
+### Step 2: Check CLI help
+
+```bash
+python main.py --help
+```
+
+Expected result:
+
+- usage instructions appear;
+- the required CSV path argument is shown.
+
+---
+
+### Step 3: Run the sample analysis
+
+```bash
+python main.py data/sample.csv
+```
+
+Manually verify that the output includes:
+
+- dataset dimensions;
+- column data types;
+- missing values;
+- duplicate rows;
+- numeric summaries;
+- IQR-based outliers.
+
+---
+
+### Step 4: Test missing file behavior
+
+```bash
+python main.py does_not_exist.csv
+```
+
+Expected result:
+
+- clear error message;
+- nonzero exit code;
+- no normal traceback.
+
+---
+
+### Step 5: Test empty-file behavior
+
+Run the application using a completely empty CSV file.
+
+Expected result:
+
+- clear empty-file message;
+- nonzero exit code;
+- no uncaught traceback.
+
+---
+
+### Step 6: Run automated tests
+
+```bash
+pytest
+```
+
+Expected result:
+
+- all tests pass.
+
+---
+
+### Step 7: Build the Docker image
+
+```bash
+docker build -t csv-quality-reporter .
+```
+
+Expected result:
+
+- image builds successfully.
+
+---
+
+### Step 8: Run the default container analysis
+
+```bash
+docker run --rm csv-quality-reporter
+```
+
+Expected result:
+
+- a real report is generated for `data/sample.csv`.
+
+---
+
+### Step 9: Test a mounted CSV
+
+Run the documented volume-mount command against a local CSV.
+
+Expected result:
+
+- the container analyzes the mounted file successfully.
+
+---
+
+## 20. README Requirements
+
+The final `README.md` should contain:
+
+- project title;
+- brief project description;
+- feature list;
+- requirements;
+- setup instructions;
+- command-line usage;
+- example command;
+- explanation of each report section;
+- testing instructions;
+- Docker build instructions;
+- Docker run instructions;
+- mounted-file Docker example;
+- manual smoke-test procedure;
+- brief explanation of the IQR method;
+- known limitations.
+
+All documented commands should match the actual implementation.
+
+---
+
+## 21. Error-Handling Strategy
+
+Expected user errors should be handled explicitly.
+
+The application should provide clear user-facing messages for:
+
+- missing file;
+- directory instead of file;
+- completely empty CSV;
+- unreadable or malformed CSV where pandas raises a parsing error.
+
+Unexpected programming errors should not be silently swallowed.
+
+Do not use a broad:
+
+```python
+except Exception:
+```
+
+that hides all problems without distinction.
+
+Prefer handling expected exceptions specifically.
+
+---
+
+## 22. Out-of-Scope Features
+
+The initial project should not include:
+
+- automatic data cleaning;
+- automatic removal of duplicates;
+- automatic outlier removal;
+- automatic type conversion;
+- machine-learning-based anomaly detection;
+- HTML reports;
+- PDF reports;
+- JSON reports;
+- charts;
+- web interfaces;
+- APIs;
+- databases;
+- Excel support;
+- configuration files;
+- configurable outlier methods;
+- plugin systems;
+- parallel processing;
+- advanced logging frameworks.
+
+These may be mentioned as possible future improvements but should not be implemented in the initial version.
+
+---
+
+## 23. Risks and Design Concerns
+
+### 23.1 Overengineering
+
+Risk:
+
+The project could become harder to explain if too many modules, classes, abstractions, or frameworks are introduced.
+
+Decision:
+
+Use only:
+
+```text
+main.py
+reporter.py
+```
+
+for core application logic.
+
+Use plain functions.
+
+---
+
+### 23.2 Mixing Analysis and Printing
+
+Risk:
+
+If statistical functions directly print results, unit testing becomes harder.
+
+Decision:
+
+Analysis functions should return results.
+
+`format_report()` should handle presentation.
+
+`main.py` should print the final string.
+
+---
+
+### 23.3 Ambiguous Missing Values
+
+Risk:
+
+Users may expect values such as `"unknown"` to count as missing.
+
+Decision:
+
+Use pandas' standard parsing and `isna()` behavior.
+
+Do not create custom domain-specific missing-value rules.
+
+---
+
+### 23.4 Mixed-Type Columns
+
+Risk:
+
+A mostly numeric column with one text value may be inferred as nonnumeric.
+
+Decision:
+
+Respect pandas' inferred type.
+
+Do not automatically coerce it.
+
+---
+
+### 23.5 Outlier Interpretation
+
+Risk:
+
+Users may assume an IQR outlier is incorrect data.
+
+Decision:
+
+Describe values as IQR-based statistical outliers only.
+
+Do not label them as errors.
+
+---
+
+### 23.6 Fragile Output Tests
+
+Risk:
+
+Testing the entire formatted report as one exact string can make harmless formatting changes break tests.
+
+Decision:
+
+Unit-test calculation results separately.
+
+Integration tests should check important output sections and messages rather than exact full output.
+
+---
+
+### 23.7 Docker Documentation Drift
+
+Risk:
+
+Documented Docker commands may not match the final image behavior.
+
+Decision:
+
+Include Docker commands in the manual smoke-test procedure and execute them before submission.
+
+---
+
+## 24. Implementation Order
+
+The Builder should follow this order.
+
+### Phase 1: Create Project Skeleton
+
+Create:
+
+```text
+main.py
+reporter.py
+requirements.txt
+README.md
+Dockerfile
+.dockerignore
+.gitignore
+data/
+tests/
+docs/
+```
+
+Add the finalized `docs/plan.md`.
+
+---
+
+### Phase 2: Implement CSV Loading
+
+Implement:
+
+```text
+load_csv(path)
+```
+
+Handle:
+
+- valid file;
+- missing file;
+- directory path;
+- completely empty file;
+- pandas parsing errors.
+
+Add tests before moving on.
+
+---
+
+### Phase 3: Implement General Data Analysis
+
+Implement the general parts of:
+
+```text
+analyze_dataframe(df)
+```
+
+Include:
+
+- shape;
+- data types;
+- missing counts and percentages;
+- duplicate count and percentage.
+
+Add unit tests.
+
+---
+
+### Phase 4: Implement Numeric Summary Statistics
+
+Add numeric-column selection and descriptive statistics.
+
+Handle:
+
+- normal numeric columns;
+- text-only datasets;
+- zero-row datasets.
+
+Add tests.
+
+---
+
+### Phase 5: Implement IQR Outlier Detection
+
+Implement:
+
+```text
+detect_iqr_outliers(series)
+```
+
+Test:
+
+- normal data;
+- obvious outlier;
+- missing values;
+- constant values;
+- all-missing numeric data.
+
+Then connect it to:
+
+```text
+analyze_dataframe(df)
+```
+
+for each numeric column.
+
+---
+
+### Phase 6: Implement Report Formatting
+
+Implement:
+
+```text
+format_report(results)
+```
+
+Ensure the report includes all required sections and edge-case messages.
+
+Do not add statistical calculations to this function.
+
+---
+
+### Phase 7: Implement CLI
+
+Implement `argparse` in `main.py`.
+
+Connect:
+
+```text
+CSV path
+ → load_csv
+ → analyze_dataframe
+ → format_report
+ → print
+```
+
+Return:
+
+- zero exit code for successful reports;
+- nonzero exit code for expected input errors.
+
+---
+
+### Phase 8: Add CLI Integration Tests
+
+Test:
+
+- normal CSV;
+- missing file;
+- completely empty CSV;
+- text-only CSV;
+- header-only CSV.
+
+---
+
+### Phase 9: Create Sample Dataset
+
+Create:
+
+```text
+data/sample.csv
+```
+
+Include:
+
+- text columns;
+- numeric columns;
+- missing values;
+- duplicate data;
+- an obvious numeric outlier.
+
+Verify that the resulting report is meaningful.
+
+---
+
+### Phase 10: Add Docker Support
+
+Implement:
+
+```text
+Dockerfile
+.dockerignore
+```
+
+Verify:
+
+```bash
+docker build -t csv-quality-reporter .
+docker run --rm csv-quality-reporter
+```
+
+The default run must generate a real report.
+
+---
+
+### Phase 11: Complete README
+
+Document only commands and behaviors that have been verified.
+
+Include:
+
+- setup;
+- usage;
+- tests;
+- Docker;
+- mounted CSV usage;
+- IQR explanation;
+- edge-case behavior;
+- smoke-test procedure;
+- limitations.
+
+---
+
+### Phase 12: Final Verification
+
+Before submission:
+
+```bash
+pytest
+```
+
+Then manually complete the full smoke-test procedure.
+
+Confirm:
+
+- normal CSV works;
+- text-only CSV works;
+- header-only CSV works;
+- missing file returns a clear error and nonzero code;
+- completely empty file returns a clear error and nonzero code;
+- Docker image builds;
+- default container performs meaningful analysis;
+- mounted CSV works;
+- README commands match actual project behavior.
+
+---
+
+## 25. Final Architecture
+
+The finalized architecture is:
+
+```text
+              main.py
+                 │
+                 ▼
+           argparse CLI
+                 │
+                 ▼
+             load_csv()
+                 │
+                 ▼
+        analyze_dataframe()
+                 │
+          ┌──────┴──────┐
+          │             │
+   general checks   numeric analysis
+                        │
+                        ▼
+             detect_iqr_outliers()
+                 │
+                 ▼
+          structured results
+                 │
+                 ▼
+           format_report()
+                 │
+                 ▼
+               stdout
+```
+
+Core separation of responsibilities:
+
+```text
+input handling → analysis → presentation
+```
+
+This architecture is intentionally small, testable, and easy to explain while still meeting the project's software-engineering requirements.
+
+===== TRANSCRIPT END =====
