@@ -1,4 +1,4 @@
-STUDENT_NAME: Zhenmin Dai
+STUDENT_NAME: Jacey Dai
 NETID: zd86
 OPTION: 3
 ROLE: architect

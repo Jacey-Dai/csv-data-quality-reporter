@@ -16,14 +16,25 @@ def column_types(df: pd.DataFrame) -> dict[str, str]:
     return {column: str(dtype) for column, dtype in df.dtypes.items()}
 
 
-def missing_values(df: pd.DataFrame) -> dict[str, int]:
-    """Return the number of missing values in each column."""
-    return {column: int(count) for column, count in df.isna().sum().items()}
+def missing_values(df: pd.DataFrame) -> dict[str, dict[str, float | int]]:
+    """Return missing-value count and percentage for each column."""
+    total_rows = len(df)
+    results: dict[str, dict[str, float | int]] = {}
+
+    for column, count in df.isna().sum().items():
+        count = int(count)
+        percentage = (count / total_rows * 100) if total_rows else 0.0
+        results[column] = {"count": count, "percentage": percentage}
+
+    return results
 
 
-def duplicate_count(df: pd.DataFrame) -> int:
-    """Return the number of duplicate rows."""
-    return int(df.duplicated().sum())
+def duplicate_count(df: pd.DataFrame) -> dict[str, float | int]:
+    """Return duplicate-row count and percentage."""
+    count = int(df.duplicated().sum())
+    total_rows = len(df)
+    percentage = (count / total_rows * 100) if total_rows else 0.0
+    return {"count": count, "percentage": percentage}
 
 
 def numeric_summary(df: pd.DataFrame) -> dict[str, dict[str, float]] | None:
@@ -50,7 +61,6 @@ def find_outliers(df: pd.DataFrame) -> dict[str, dict[str, object]] | None:
         return None
 
     results: dict[str, dict[str, object]] = {}
-
     for column in numeric_df.columns:
         values = numeric_df[column].dropna()
 
@@ -72,7 +82,6 @@ def find_outliers(df: pd.DataFrame) -> dict[str, dict[str, object]] | None:
         lower_bound = q1 - 1.5 * iqr
         upper_bound = q3 + 1.5 * iqr
         outliers = values[(values < lower_bound) | (values > upper_bound)]
-
         results[column] = {
             "q1": q1,
             "q3": q3,
@@ -108,6 +117,7 @@ def format_report(analysis: dict[str, object]) -> str:
     shape = analysis["shape"]
     types = analysis["column_types"]
     missing = analysis["missing_values"]
+    duplicates = analysis["duplicate_rows"]
     summary = analysis["numeric_summary"]
     outliers = analysis["outliers"]
 
@@ -115,8 +125,8 @@ def format_report(analysis: dict[str, object]) -> str:
         "CSV Data Quality Report",
         "=======================",
         "",
-        "Dataset Shape",
-        "-------------",
+        "Dataset Dimensions",
+        "------------------",
         f"Rows: {shape['rows']}",
         f"Columns: {shape['columns']}",
         "",
@@ -131,7 +141,10 @@ def format_report(analysis: dict[str, object]) -> str:
 
     lines.extend(["", "Missing Values", "--------------"])
     if missing:
-        lines.extend(f"{column}: {count}" for column, count in missing.items())
+        for column, result in missing.items():
+            lines.append(
+                f"{column}: {result['count']} ({result['percentage']:.2f}%)"
+            )
     else:
         lines.append("No columns found.")
 
@@ -140,10 +153,11 @@ def format_report(analysis: dict[str, object]) -> str:
             "",
             "Duplicate Rows",
             "--------------",
-            str(analysis["duplicate_rows"]),
+            f"Count: {duplicates['count']}",
+            f"Percentage: {duplicates['percentage']:.2f}%",
             "",
-            "Numeric Summary",
-            "---------------",
+            "Numeric Summary Statistics",
+            "--------------------------",
         ]
     )
 
@@ -155,16 +169,24 @@ def format_report(analysis: dict[str, object]) -> str:
             for statistic, value in statistics.items():
                 lines.append(f"  {statistic}: {_format_number(value)}")
 
-    lines.extend(["", "IQR Outliers", "------------"])
+    lines.extend(["", "Numeric Outliers — IQR Method", "-----------------------------"])
     if outliers is None:
         lines.append("Skipped: No numeric columns were found.")
     else:
         for column, result in outliers.items():
             lines.append(f"{column}:")
+            if result["iqr"] is None:
+                lines.append("  No non-missing values available for IQR calculation.")
+                lines.append("  Outlier count: 0")
+                continue
+
+            lines.append(f"  Q1: {_format_number(result['q1'])}")
+            lines.append(f"  Q3: {_format_number(result['q3'])}")
+            lines.append(f"  IQR: {_format_number(result['iqr'])}")
+            lines.append(f"  Lower bound: {_format_number(result['lower_bound'])}")
+            lines.append(f"  Upper bound: {_format_number(result['upper_bound'])}")
             lines.append(f"  Outlier count: {result['count']}")
             if result["values"]:
                 lines.append(f"  Outlier values: {result['values']}")
-            elif result["iqr"] is None:
-                lines.append("  No non-missing values available for IQR calculation.")
 
     return "\n".join(lines)

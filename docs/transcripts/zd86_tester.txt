@@ -1,0 +1,1095 @@
+STUDENT_NAME: Zhenmin Dai
+NETID: zd86
+OPTION: 3
+ROLE: tester
+AGENT_TOOL: ChatGPT
+REPOSITORY_B_URL: https://github.com/Jacey-Dai/csv-data-quality-reporter
+===== TRANSCRIPT START =====
+
+[STUDENT]
+You are the independent Tester for my IDS 706 software engineering assignment.\
+\
+Repository:\
+[https://github.com/Jacey-Dai/csv-data-quality-reporter](https://github.com/Jacey-Dai/csv-data-quality-reporter)\
+\
+Student: Jacey Dai\
+NetID: zd86\
+Project option: Option 3 — CSV Data Quality Reporter\
+\
+The Architect plan is located at:\
+docs/transcripts/plan.md\
+\
+The Builder implementation has been committed to the main branch. Independently inspect the repository, implementation, tests, README, and Docker configuration. Do not assume the Builder’s claims are correct.\
+\
+Your responsibilities are:\
+\
+1\. Compare the implementation against docs/transcripts/plan.md.\
+2\. Review main.py and reporter.py for correctness, readability, and unnecessary complexity.\
+3\. Run the complete pytest suite and report the exact results.\
+4\. Independently test the CLI with:\
+&#x20;  \- data/sample.csv;\
+&#x20;  \- a missing file;\
+&#x20;  \- a directory path;\
+&#x20;  \- a zero-byte CSV;\
+&#x20;  \- a header-only CSV;\
+&#x20;  \- a text-only CSV;\
+&#x20;  \- constant numeric data;\
+&#x20;  \- numeric data containing missing values; and\
+&#x20;  \- an all-missing numeric column.\
+5\. Verify:\
+&#x20;  \- successful commands return exit code 0;\
+&#x20;  \- invalid input returns a nonzero exit code;\
+&#x20;  \- errors are printed to stderr;\
+&#x20;  \- handled errors do not display tracebacks;\
+&#x20;  \- missing values are not counted as outliers;\
+&#x20;  \- IQR outlier calculations are correct;\
+&#x20;  \- text-only and header-only CSV files do not crash.\
+6\. Inspect the existing tests for weak assertions or missing important cases.\
+7\. Add or recommend additional meaningful tests where necessary.\
+8\. Inspect the Dockerfile and README commands for consistency.\
+9\. Build and run the Docker image if Docker is available. If it is unavailable, clearly state that instead of claiming success.\
+10\. Check README.md for accurate setup, usage, testing, Docker, report interpretation, and edge-case documentation.\
+11\. Do not modify:\
+&#x20;   \- docs/transcripts/plan.md;\
+&#x20;   \- docs/transcripts/zd86_architect.txt; or\
+&#x20;   \- docs/transcripts/zd86_builder.txt.\
+\
+Before changing anything, provide an independent audit containing:\
+\- requirements that pass;\
+\- defects or risks found;\
+\- missing or weak tests;\
+\- documentation inconsistencies;\
+\- proposed changes.\
+\
+Do not immediately approve the project merely because the current tests pass. Verify the behavior independently and explain the evidence for each conclusion.
+
+[AGENT]
+## Independent Tester Audit — before any changes
+
+I did **not modify any repository files**. I inspected the current `main` branch files directly from GitHub and independently executed the code/tests in a local reconstruction of those files.
+
+### Overall status
+
+The implementation has a solid, simple core and the existing test suite passes, but I would **not approve it unchanged yet**. There are several concrete mismatches with `docs/transcripts/plan.md`, mainly around required report content and insufficient test assertions.
+
+The highest-priority issues are:
+
+1. **Missing-value percentages are not calculated or reported.**
+2. **Duplicate-row percentage is not calculated or reported.**
+3. **Q1, Q3, IQR, lower bound, and upper bound are calculated internally but are not printed in the report.**
+4. Several required report section names differ from the Architect plan.
+5. The current tests do not catch any of those omissions.
+6. README is mostly accurate for the implementation, but it omits the plan-required **known limitations** section and its smoke-test procedure is incomplete relative to the plan.
+
+The Architect explicitly requires missing counts **and percentages**, duplicate count **and percentage**, and all IQR statistics. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md) [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+---
+
+# 1. Requirements that pass
+
+### Architecture and simplicity — PASS
+
+The project remains beginner-friendly:
+
+- only `main.py` and `reporter.py` contain application logic;
+- plain functions are used;
+- pandas handles CSV/statistical operations;
+- argparse handles the CLI;
+- no unnecessary framework/database/configuration abstraction was introduced.
+
+That matches the design philosophy in the plan. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+`main.py` is short and readable, and `reporter.py` separates analysis from formatting reasonably well. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/main.py) [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/reporter.py)
+
+### CSV loading/error handling — PASS
+
+`main.py` explicitly handles:
+
+- `FileNotFoundError`
+- `IsADirectoryError`
+- `PermissionError`
+- `pandas.errors.EmptyDataError`
+- `pandas.errors.ParserError`
+- `UnicodeDecodeError`
+
+There is no broad `except Exception`. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/main.py)
+
+Independent execution confirmed:
+
+| Input | Exit | stdout/stderr | Traceback |
+|---|---:|---|---|
+| `data/sample.csv` | 0 | report on stdout | No |
+| missing file | 1 | error on stderr | No |
+| directory path | 1 | error on stderr | No |
+| zero-byte CSV | 1 | error on stderr | No |
+| header-only CSV | 0 | report | No |
+| text-only CSV | 0 | report | No |
+| constant numeric data | 0 | report | No |
+| numeric + missing values | 0 | report | No |
+| all-missing numeric column | 0 | report | No |
+
+So the important stderr/exit-code/traceback behavior is correct.
+
+### Header-only CSV — PASS
+
+A header-only CSV produced:
+
+```text
+Rows: 0
+Columns: 3
+```
+
+and completed successfully.
+
+Numeric analysis was skipped rather than crashing, consistent with the required behavior. The plan specifically defines a header-only CSV as valid. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+### Text-only CSV — PASS
+
+Text-only data exits 0 and both numeric sections state:
+
+```text
+Skipped: No numeric columns were found.
+```
+
+That is clear and appropriate. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/reporter.py)
+
+### Constant numeric data — PASS
+
+For four values equal to `5`, the calculation produced:
+
+```text
+q1 = 5.0
+q3 = 5.0
+iqr = 0.0
+lower_bound = 5.0
+upper_bound = 5.0
+count = 0
+```
+
+So constant data is not incorrectly classified as outliers.
+
+### Missing values excluded from IQR — PASS
+
+I independently tested:
+
+```text
+1, 2, NaN, 3, 4, 100
+```
+
+with a companion text column so pandas preserved the missing row.
+
+The result was:
+
+```text
+Q1 = 2.0
+Q3 = 4.0
+IQR = 2.0
+Lower = -1.0
+Upper = 7.0
+Outliers = 1
+Values = [100.0]
+```
+
+The missing value was correctly excluded.
+
+That satisfies the statistical behavior required by the plan. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+### IQR implementation correctness — PASS
+
+Another independent known-value case:
+
+```text
+1, 2, 2, 3, 3, 4, 100
+```
+
+returned:
+
+```text
+Q1 = 2.0
+Q3 = 3.5
+IQR = 1.5
+Lower = -0.25
+Upper = 5.75
+Outlier count = 1
+```
+
+This is correct using pandas' percentile interpolation.
+
+### All-missing numeric column — PASS
+
+Using:
+
+```csv
+x,label
+,a
+,b
+,c
+```
+
+pandas inferred `x` as numeric `float64`.
+
+The program:
+
+- did not crash;
+- showed missing count `3`;
+- returned zero outliers;
+- displayed:
+
+```text
+No non-missing values available for IQR calculation.
+```
+
+This is good behavior.
+
+One minor presentation issue is that the numeric summary displays `nan` repeatedly, but that is not a crash or calculation defect.
+
+---
+
+# 2. Complete pytest result
+
+The repository contains **14 tests**: eight unit tests and six CLI integration tests. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/tests/test_reporter.py) [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/tests/test_cli.py)
+
+I ran:
+
+```bash
+python -m pytest -v
+```
+
+Result:
+
+```text
+collected 14 items
+
+tests/test_cli.py::test_successful_cli_returns_zero PASSED
+tests/test_cli.py::test_missing_file_returns_nonzero_without_traceback PASSED
+tests/test_cli.py::test_directory_returns_nonzero_without_traceback PASSED
+tests/test_cli.py::test_zero_byte_csv_returns_nonzero_without_traceback PASSED
+tests/test_cli.py::test_header_only_csv_returns_zero PASSED
+tests/test_cli.py::test_text_only_csv_returns_zero_and_skips_numeric_sections PASSED
+tests/test_reporter.py::test_basic_shape_missing_and_duplicates PASSED
+tests/test_reporter.py::test_numeric_summary_returns_testable_structure PASSED
+tests/test_reporter.py::test_iqr_detects_outlier PASSED
+tests/test_reporter.py::test_constant_numeric_column_has_zero_outliers PASSED
+tests/test_reporter.py::test_missing_numeric_values_are_not_outliers PASSED
+tests/test_reporter.py::test_all_missing_numeric_column_does_not_crash PASSED
+tests/test_reporter.py::test_text_only_skips_numeric_analysis_clearly PASSED
+tests/test_reporter.py::test_header_only_dataframe_generates_report PASSED
+
+============================== 14 passed in 3.65s ==============================
+```
+
+Execution environment was Python **3.13.5** with pytest **9.0.2**.
+
+A direct `git clone` was blocked by this execution environment's network restrictions, so I inspected the repository's current raw GitHub files and reproduced those exact source/test contents for execution. I am not treating the Builder's prior local test output as evidence.
+
+---
+
+# 3. Defects / plan mismatches
+
+## Defect 1 — missing percentages are absent
+
+The plan says every column must report:
+
+- missing count;
+- missing percentage.
+
+It also specifically says a zero-row dataset should report `0.00%`. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+Current implementation only returns:
+
+```python
+return {
+    column: int(count)
+    for column, count in df.isna().sum().items()
+}
+```
+
+and prints only the count. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/reporter.py)
+
+For example, the sample currently prints:
+
+```text
+age: 1
+city: 1
+```
+
+instead of something equivalent to:
+
+```text
+age: 1 (12.50%)
+city: 1 (12.50%)
+```
+
+**Severity: required functionality missing.**
+
+---
+
+## Defect 2 — duplicate percentage is absent
+
+The Architect plan requires both:
+
+- duplicate count;
+- duplicate percentage. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+Current code returns only an integer:
+
+```python
+def duplicate_count(df):
+    return int(df.duplicated().sum())
+```
+
+and prints:
+
+```text
+Duplicate Rows
+--------------
+1
+```
+
+No percentage is calculated anywhere. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/reporter.py)
+
+For the eight-row sample, the duplicate percentage should be:
+
+```text
+12.50%
+```
+
+**Severity: required functionality missing.**
+
+---
+
+## Defect 3 — IQR details are calculated but hidden from the report
+
+This is probably the most obvious reporting mismatch.
+
+`find_outliers()` correctly calculates:
+
+- Q1;
+- Q3;
+- IQR;
+- lower bound;
+- upper bound;
+- outlier count. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/reporter.py)
+
+But `format_report()` only outputs:
+
+```text
+Outlier count: ...
+Outlier values: ...
+```
+
+It never displays the other five values. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/reporter.py)
+
+The plan explicitly requires all six pieces of information per numeric column. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+So the statistics exist internally but the required user-facing feature is incomplete.
+
+**Severity: required report content missing.**
+
+---
+
+## Defect 4 — required report section names drifted
+
+The plan's integration expectations explicitly call for:
+
+```text
+Dataset Dimensions
+Column Data Types
+Missing Values
+Duplicate Rows
+Numeric Summary Statistics
+Numeric Outliers
+``` :chatgpt-content-reference{index="18"}
+
+
+Current report uses:
+
+```text
+Dataset Shape
+Numeric Summary
+IQR Outliers
+``` :chatgpt-content-reference{index="19"}
+
+
+The plan says spacing can change, but section names/order should remain sufficiently stable for documentation and integration tests.
+
+This isn't a calculation bug, but it is an Architect-plan compliance issue.
+
+---
+
+## Risk 5 — function organization differs from plan
+
+The plan proposed a focused:
+
+```python
+detect_iqr_outliers(series)
+```
+
+function and specifically says it is the primary custom statistical function needing focused tests. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+The implementation instead has:
+
+```python
+find_outliers(df)
+```
+
+which performs column selection, looping, and statistical calculation together. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/reporter.py)
+
+It is still readable and not overengineered, so I would classify this as a **minor design deviation**, not a functional defect.
+
+A series-level helper would make the IQR logic easier to test independently.
+
+---
+
+# 4. Missing or weak tests
+
+This is where the green `14 passed` result is misleading.
+
+## Existing successful CLI test is too weak
+
+The plan says the successful integration test should assert all major sections. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+Current test only checks:
+
+```python
+assert result.returncode == 0
+assert "CSV Data Quality Report" in result.stdout
+assert "Traceback" not in result.stderr
+``` :chatgpt-content-reference{index="23"}
+
+
+Therefore the program could remove nearly the entire report and this test would still pass.
+
+It should additionally assert the required sections.
+
+---
+
+## Missing-percentage behavior has no test
+
+Current test:
+
+```python
+assert missing_values(df) == {"name": 0, "value": 1}
+```
+
+only validates counts. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/tests/test_reporter.py)
+
+There is no test for:
+
+- `33.33%` in a three-row example;
+- `0.00%` for zero-row data.
+
+This is exactly why the missing implementation passed unnoticed.
+
+---
+
+## Duplicate percentage has no test
+
+The plan requires duplicate count and percentage, including zero-row behavior. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+No existing test checks a duplicate percentage.
+
+---
+
+## IQR unit test is too weak
+
+Current test checks only:
+
+```python
+count == 1
+values == [100]
+``` :chatgpt-content-reference{index="26"}
+
+
+The plan explicitly says the important IQR unit test should verify:
+
+- Q1
+- Q3
+- IQR
+- lower bound
+- upper bound
+- count. :chatgpt-content-reference{index="27"}
+
+The underlying code happens to be correct, but the test does not prove that.
+
+---
+
+## Missing-value IQR test is also weak
+
+Current test:
+
+```python
+[1.0, 2.0, None, 3.0]
+```
+
+only checks:
+
+```python
+count == 0
+values == []
+``` :chatgpt-content-reference{index="28"}
+
+
+This proves `None` is not directly returned as an outlier, but it doesn't strongly prove that missing data was excluded from the quartile calculation.
+
+A case such as:
+
+```text
+1, 2, NaN, 3, 4, 100
+```
+
+with expected bounds is much stronger.
+
+---
+
+## Header-only test is incomplete
+
+It checks:
+
+```python
+Rows: 0
+```
+
+only. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/tests/test_cli.py)
+
+It should also verify:
+
+- success code;
+- column count;
+- zero missing percentages;
+- duplicate count/percentage;
+- numeric handling;
+- no stderr.
+
+---
+
+## CLI cases that should be added
+
+Given the assignment's stated test responsibilities, I recommend integration tests for:
+
+- constant numeric CSV;
+- numeric CSV containing missing values;
+- all-missing numeric column;
+- exact stderr/stdout separation for expected errors;
+- full successful report section coverage.
+
+Unit tests should cover the exact IQR bounds and required percentages.
+
+---
+
+# 5. README audit
+
+The README is generally clear and aligned with the current implementation. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/README.md)
+
+### Accurate sections
+
+It includes:
+
+- title and description;
+- features;
+- project structure;
+- Python/setup instructions;
+- CLI usage;
+- test command;
+- Docker build/run instructions;
+- mounted-file example;
+- IQR explanation;
+- edge-case discussion.
+
+The README's statement that CLI tests use `sys.executable` is accurate. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/tests/test_cli.py)
+
+### Documentation inconsistency: missing percentages
+
+README says:
+
+> Missing Values counts missing entries by column. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/README.md)
+
+
+That accurately describes the current code but does **not** describe the Architect requirement to report percentages.
+
+The implementation and README therefore agree with one another, but both deviate from the plan.
+
+### Documentation inconsistency: incomplete IQR output
+
+README says the IQR section:
+
+> reports the count and values outside the 1.5-IQR bounds. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/README.md)
+
+
+Again, that's accurate for the implementation, but the Architect requires displaying Q1, Q3, IQR, lower bound, and upper bound as well.
+
+### Missing known limitations
+
+The Architect explicitly requires a README section containing **known limitations**. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/docs/transcripts/plan.md)
+
+There is no dedicated known-limitations section in the current README. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/README.md)
+
+Potential limitations worth documenting include:
+
+- only CSV input;
+- pandas dtype inference is used as-is;
+- text representations such as `"unknown"` are not custom-treated as missing;
+- mixed numeric/text columns can become object columns and therefore skip numeric analysis;
+- IQR flags statistical outliers, not necessarily erroneous records.
+
+### Manual smoke test is incomplete
+
+Current README smoke test runs:
+
+```bash
+python main.py data/sample.csv
+python main.py tests/fixtures/header_only.csv
+python main.py tests/fixtures/text_only.csv
+python main.py does-not-exist.csv
+``` :chatgpt-content-reference{index="36"}
+
+
+The Architect's smoke-test procedure also calls for:
+
+- `--help`;
+- empty-file test;
+- automated tests;
+- Docker build;
+- default Docker run;
+- mounted-file Docker run. :chatgpt-content-reference{index="37"} :chatgpt-content-reference{index="38"}
+
+So the README has a smoke test, but it is incomplete relative to the approved plan.
+
+---
+
+# 6. Docker audit
+
+The Dockerfile is internally consistent:
+
+```dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY main.py reporter.py ./
+COPY data ./data
+
+ENTRYPOINT ["python", "main.py"]
+CMD ["data/sample.csv"]
+``` :chatgpt-content-reference{index="39"}
+
+
+README uses:
+
+```bash
+docker run --rm csv-data-quality-reporter
+```
+
+for the default sample and:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/my_data.csv:/app/input.csv:ro" \
+  csv-data-quality-reporter /app/input.csv
+```
+
+for a mounted CSV. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/README.md)
+
+Those commands correctly match `ENTRYPOINT`/`CMD`.
+
+`.dockerignore` also preserves `data/`, which is necessary for the default command. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/.dockerignore)
+
+### Docker execution status
+
+**Docker is unavailable in my execution environment.**
+
+`docker` was not present on the executable path, so I could not build or run the image. I therefore do **not** claim that the Docker image successfully builds or executes.
+
+Static inspection indicates the Dockerfile and README commands are consistent, but runtime verification remains outstanding.
+
+---
+
+# 7. Code quality assessment
+
+### `main.py`
+
+Good overall.
+
+Strengths:
+
+- concise;
+- appropriate `argparse`;
+- specific exception handling;
+- stderr is used correctly;
+- explicit return codes;
+- no unnecessary statistical logic;
+- no broad exception masking. [GitHub](https://raw.githubusercontent.com/Jacey-Dai/csv-data-quality-reporter/main/main.py)
+
+One plan deviation is that `load_csv()` lives in `main.py` rather than `reporter.py`. This does not materially hurt readability, and arguably keeps input concerns near the CLI.
+
+### `reporter.py`
+
+Also readable and beginner-friendly.
+
+The main weakness is not complexity but **incomplete required outputs**.
+
+One small design improvement would be separating the single-series IQR calculation from the DataFrame loop, e.g. a focused `detect_iqr_outliers(series)` helper, because that makes the most important custom calculation especially easy to test.
+
+I would not add classes or more modules.
+
+---
+
+# 8. Proposed changes
+
+I recommend a small targeted revision rather than a rewrite:
+
+1. Change missing-value analysis so each column stores both `count` and `percentage`; use `0.0` when `len(df) == 0`.
+2. Change duplicate analysis to return both `count` and `percentage`, likewise safely handling zero rows.
+3. Update `format_report()` to print missing percentages and duplicate percentage.
+4. Print Q1, Q3, IQR, lower bound, upper bound, and outlier count for every usable numeric column.
+5. Align report headings with the plan:
+   - `Dataset Dimensions`
+   - `Numeric Summary Statistics`
+   - `Numeric Outliers — IQR Method`
+6. Strengthen `test_iqr_detects_outlier()` to assert all five numeric calculations plus the count.
+7. Add explicit tests for missing percentages, duplicate percentage, zero-row percentages, missing-value IQR bounds, constant data, and all-missing data.
+8. Strengthen the successful CLI test so it checks every required report section.
+9. Add integration tests for the three numeric edge cases not currently covered through the CLI.
+10. Add a README `Known limitations` section and expand the manual smoke-test steps.
+
+I would **not** change the approved Architect/Builder transcripts, and I would keep the application limited to `main.py` and `reporter.py`.
+
+### Tester conclusion
+
+**Current status: needs targeted corrections before approval.**
+
+The core calculations, error handling, exit codes, stderr behavior, text/header edge cases, and general architecture are good. The remaining problems are concentrated and easy to repair, but they are substantive requirements rather than cosmetic preferences: missing percentages, duplicate percentage, and required IQR details are absent from the final report despite being explicitly specified in the Architect plan.
+
+[STUDENT]
+
+I reviewed and accept your audit. Please now implement the targeted corrections you identified, without redesigning or overcomplicating the project.
+
+Required changes:
+
+1. Missing values
+   - Return and report both count and percentage for every column.
+   - Calculate percentage as count / total rows * 100.
+   - For a zero-row DataFrame, use 0.00% rather than dividing by zero.
+
+2. Duplicate rows
+   - Return and report both duplicate count and percentage.
+   - For a zero-row DataFrame, use 0.00%.
+
+3. IQR report
+   - Display Q1, Q3, IQR, lower bound, upper bound, and outlier count for every usable numeric column.
+   - Continue displaying outlier values when any exist.
+   - Keep missing values excluded from quartile and outlier calculations.
+   - Handle all-missing numeric columns with a clear message rather than crashing.
+
+4. Report headings
+   Align the user-facing headings with the Architect plan:
+   - Dataset Dimensions
+   - Column Data Types
+   - Missing Values
+   - Duplicate Rows
+   - Numeric Summary Statistics
+   - Numeric Outliers — IQR Method
+
+5. Tests
+   Strengthen or add tests that verify:
+   - missing count and percentage;
+   - duplicate count and percentage;
+   - zero-row percentages are 0.00%;
+   - exact Q1, Q3, IQR, lower bound, upper bound, and outlier count;
+   - missing values are excluded from IQR calculations;
+   - the successful CLI output includes every required report section;
+   - header-only output includes dimensions, percentages, and no traceback;
+   - constant numeric, numeric-with-missing, and all-missing numeric CSV files work through the CLI;
+   - invalid inputs write errors to stderr and leave stdout empty.
+
+6. README
+   - Update the report descriptions to include the newly displayed percentages and IQR statistics.
+   - Add a Known Limitations section.
+   - Expand the manual smoke-test instructions to include --help, zero-byte CSV, pytest, Docker build, default Docker run, and mounted-file Docker run.
+
+7. Keep the project beginner-friendly:
+   - application code must remain limited to main.py and reporter.py;
+   - do not add classes, frameworks, configuration systems, databases, or web interfaces;
+   - do not modify docs/transcripts/plan.md, zd86_architect.txt, or zd86_builder.txt.
+
+After making the changes:
+
+- run the complete pytest suite;
+- run the CLI smoke tests;
+- report every file changed;
+- provide the complete test results;
+- provide a downloadable ZIP containing only the changed project files;
+- provide finalized Markdown content for docs/test_report.md summarizing the independent audit, corrections made, final test evidence, Docker status, and remaining limitations.
+
+Do not claim Docker runtime success because Docker is unavailable in your environment. I will verify Docker independently on my Mac.
+
+
+[AGENT]
+
+Implemented the accepted targeted corrections without redesigning the project. The remote GitHub repository itself was not modified; the corrected project files are packaged for you to copy/commit.
+
+Changed files:
+- `reporter.py`
+- `tests/test_reporter.py`
+- `tests/test_cli.py`
+- `README.md`
+- `docs/test_report.md`
+
+`main.py`, the Dockerfile, and all protected transcript files were left unchanged.
+
+### Final test result
+
+```text
+collected 18 items
+
+tests/test_cli.py::test_successful_cli_returns_zero_and_all_sections PASSED
+tests/test_cli.py::test_missing_file_returns_nonzero_stderr_only_without_traceback PASSED
+tests/test_cli.py::test_directory_returns_nonzero_stderr_only_without_traceback PASSED
+tests/test_cli.py::test_zero_byte_csv_returns_nonzero_stderr_only_without_traceback PASSED
+tests/test_cli.py::test_header_only_csv_returns_zero_with_dimensions_and_percentages PASSED
+tests/test_cli.py::test_text_only_csv_returns_zero_and_skips_numeric_sections PASSED
+tests/test_cli.py::test_constant_numeric_csv_works_through_cli PASSED
+tests/test_cli.py::test_numeric_with_missing_values_works_through_cli PASSED
+tests/test_cli.py::test_all_missing_numeric_csv_works_through_cli PASSED
+tests/test_reporter.py::test_basic_shape_missing_and_duplicates PASSED
+tests/test_reporter.py::test_zero_row_percentages_are_zero PASSED
+tests/test_reporter.py::test_numeric_summary_returns_testable_structure PASSED
+tests/test_reporter.py::test_iqr_detects_outlier_with_exact_statistics PASSED
+tests/test_reporter.py::test_constant_numeric_column_has_zero_outliers PASSED
+tests/test_reporter.py::test_missing_numeric_values_are_excluded_from_iqr_calculation PASSED
+tests/test_reporter.py::test_all_missing_numeric_column_does_not_crash PASSED
+tests/test_reporter.py::test_text_only_skips_numeric_analysis_clearly PASSED
+tests/test_reporter.py::test_header_only_dataframe_generates_report_with_zero_percentages PASSED
+
+============================== 18 passed in 5.42s ==============================
+```
+
+The manual CLI smoke matrix also passed. Valid sample/header-only/text-only/constant/missing-numeric/all-missing-numeric inputs returned `0` with empty stderr. Missing-file, directory, and zero-byte inputs returned `1`, produced empty stdout, wrote errors only to stderr, and showed no traceback.
+
+For the missing-numeric test `1, 2, missing, 3, 4, 100`, the final output correctly reported `Q1 = 2`, `Q3 = 4`, `IQR = 2`, bounds `-1` and `7`, and only `100.0` as an outlier.
+
+Docker is **not available in this execution environment**, so I did not claim a successful Docker build or run. The Dockerfile/README commands remain statically consistent for you to verify on your Mac.
+
+### Files
+
+csv-data-quality-reporter-changed-files.zip[Download the ZIP containing only the five changed project files](sandbox:/mnt/data/csv-data-quality-reporter-changed-files.zip)
+
+test_report.md[Download `docs/test_report.md`](sandbox:/mnt/data/csv-data-quality-reporter/docs/test_report.md)
+
+### Final `docs/test_report.md`
+
+# Independent Tester Report
+
+**Student:** Jacey Dai  
+**NetID:** zd86  
+**Project:** IDS 706 — Option 3: CSV Data Quality Reporter
+
+## Scope
+
+This report documents an independent review of the CSV Data Quality Reporter against the approved Architect plan, followed by the targeted corrections accepted after the audit. The application remains beginner-friendly and keeps all application code in `main.py` and `reporter.py`.
+
+The protected files were not modified:
+
+- `docs/transcripts/plan.md`
+- `docs/transcripts/zd86_architect.txt`
+- `docs/transcripts/zd86_builder.txt`
+
+## Independent Audit Summary
+
+The initial implementation had a sound core: specific CLI error handling, correct exit codes, stderr use for expected failures, correct IQR calculations, safe handling of text-only/header-only data, and no unnecessary architectural complexity. The original test suite passed, but several plan requirements were not covered strongly enough by tests.
+
+The audit identified these gaps:
+
+- missing values reported counts but not percentages;
+- duplicate rows reported a count but not a percentage;
+- Q1, Q3, IQR, lower bound, and upper bound were calculated but not displayed;
+- report headings differed from the approved plan;
+- CLI tests did not assert all required report sections;
+- tests did not fully verify exact IQR statistics, zero-row percentages, or all required numeric edge cases through the CLI;
+- README documentation did not fully describe the required percentages, IQR details, known limitations, or complete smoke-test procedure.
+
+## Corrections Made
+
+### Missing values
+
+`missing_values()` now returns, for every column:
+
+- missing count;
+- missing percentage calculated as `count / total rows * 100`.
+
+For a zero-row DataFrame, the percentage is `0.0`, displayed as `0.00%`.
+
+### Duplicate rows
+
+`duplicate_count()` now returns:
+
+- duplicate count;
+- duplicate percentage.
+
+For a zero-row DataFrame, the percentage is `0.0`, displayed as `0.00%`.
+
+### IQR reporting
+
+For every usable numeric column, the report now displays:
+
+- Q1;
+- Q3;
+- IQR;
+- lower bound;
+- upper bound;
+- outlier count;
+- outlier values when any exist.
+
+Missing numeric values are removed before quartile and outlier calculations. All-missing numeric columns produce a clear message and zero outliers rather than crashing.
+
+### Report headings
+
+The user-facing headings now match the Architect plan:
+
+- `Dataset Dimensions`
+- `Column Data Types`
+- `Missing Values`
+- `Duplicate Rows`
+- `Numeric Summary Statistics`
+- `Numeric Outliers — IQR Method`
+
+### Tests
+
+The unit and CLI integration tests were strengthened to verify:
+
+- missing counts and percentages;
+- duplicate count and percentage;
+- zero-row percentages;
+- exact Q1, Q3, IQR, lower bound, upper bound, and outlier count;
+- missing-value exclusion from IQR calculations;
+- all required report headings;
+- header-only dimensions and percentages;
+- constant numeric data through the CLI;
+- numeric data with missing values through the CLI;
+- an all-missing numeric column through the CLI;
+- invalid-input errors on stderr with empty stdout and no traceback.
+
+### README
+
+The README now documents:
+
+- missing and duplicate percentages;
+- displayed IQR statistics;
+- current edge-case behavior;
+- known limitations;
+- `--help` as part of smoke testing;
+- zero-byte CSV testing;
+- full pytest execution;
+- Docker build, default run, and mounted-file run commands.
+
+## Final Automated Test Evidence
+
+Command:
+
+```bash
+python -m pytest -v
+```
+
+Final result:
+
+```text
+collected 18 items
+
+tests/test_cli.py::test_successful_cli_returns_zero_and_all_sections PASSED
+tests/test_cli.py::test_missing_file_returns_nonzero_stderr_only_without_traceback PASSED
+tests/test_cli.py::test_directory_returns_nonzero_stderr_only_without_traceback PASSED
+tests/test_cli.py::test_zero_byte_csv_returns_nonzero_stderr_only_without_traceback PASSED
+tests/test_cli.py::test_header_only_csv_returns_zero_with_dimensions_and_percentages PASSED
+tests/test_cli.py::test_text_only_csv_returns_zero_and_skips_numeric_sections PASSED
+tests/test_cli.py::test_constant_numeric_csv_works_through_cli PASSED
+tests/test_cli.py::test_numeric_with_missing_values_works_through_cli PASSED
+tests/test_cli.py::test_all_missing_numeric_csv_works_through_cli PASSED
+tests/test_reporter.py::test_basic_shape_missing_and_duplicates PASSED
+tests/test_reporter.py::test_zero_row_percentages_are_zero PASSED
+tests/test_reporter.py::test_numeric_summary_returns_testable_structure PASSED
+tests/test_reporter.py::test_iqr_detects_outlier_with_exact_statistics PASSED
+tests/test_reporter.py::test_constant_numeric_column_has_zero_outliers PASSED
+tests/test_reporter.py::test_missing_numeric_values_are_excluded_from_iqr_calculation PASSED
+tests/test_reporter.py::test_all_missing_numeric_column_does_not_crash PASSED
+tests/test_reporter.py::test_text_only_skips_numeric_analysis_clearly PASSED
+tests/test_reporter.py::test_header_only_dataframe_generates_report_with_zero_percentages PASSED
+
+18 passed
+```
+
+Test environment used for this verification:
+
+- Python 3.13.5
+- pytest 9.0.2
+- Linux execution environment
+
+## CLI Smoke-Test Evidence
+
+The following cases were executed independently after the changes:
+
+| Case | Exit code | stdout | stderr | Traceback |
+|---|---:|---|---|---|
+| `--help` | 0 | present | empty | no |
+| `data/sample.csv` | 0 | report | empty | no |
+| missing file | 1 | empty | error message | no |
+| directory path | 1 | empty | error message | no |
+| zero-byte CSV | 1 | empty | error message | no |
+| header-only CSV | 0 | report | empty | no |
+| text-only CSV | 0 | report | empty | no |
+| constant numeric CSV | 0 | report | empty | no |
+| numeric data with missing values | 0 | report | empty | no |
+| all-missing numeric column | 0 | report | empty | no |
+
+For the numeric-with-missing smoke case containing `1, 2, missing, 3, 4, 100`, the report showed:
+
+```text
+Q1: 2
+Q3: 4
+IQR: 2
+Lower bound: -1
+Upper bound: 7
+Outlier count: 1
+Outlier values: [100.0]
+```
+
+This confirms that the missing value was excluded from the quartile/outlier calculation and that the IQR result is correct.
+
+For the all-missing numeric column, the report included:
+
+```text
+No non-missing values available for IQR calculation.
+Outlier count: 0
+```
+
+## Docker Status
+
+Docker runtime verification was **not performed** because Docker is unavailable in the tester execution environment (`docker` was not present on the executable path).
+
+The Dockerfile and README commands were inspected for consistency. The project uses:
+
+```dockerfile
+ENTRYPOINT ["python", "main.py"]
+CMD ["data/sample.csv"]
+```
+
+The documented default and mounted-file commands are consistent with that configuration. Docker build/run success is intentionally not claimed here and should be verified independently on a machine with Docker installed.
+
+## Remaining Limitations
+
+The project intentionally remains small and beginner-friendly. Current limitations are:
+
+- CSV input only;
+- pandas dtype inference determines which columns are considered numeric;
+- mixed numeric/text columns can be treated as text and skipped by numeric analysis;
+- custom missing-value strings such as `unknown` are not automatically treated as missing unless pandas recognizes them;
+- IQR outliers are statistical flags and do not prove a record is erroneous;
+- CSV files are loaded fully into memory, so the project is not optimized for very large datasets.
+
+## Final Assessment
+
+After the targeted corrections, the implementation now satisfies the audited reporting requirements and the strengthened automated/CLI checks pass. No redesign, classes, frameworks, databases, configuration systems, or web interfaces were introduced.
+
+
+===== TRANSCRIPT END =====
